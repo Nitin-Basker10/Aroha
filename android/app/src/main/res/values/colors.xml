@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light launch canvas; values-night supplies the dark counterpart. -->
+    <color name="aroha_launch_background">#F4F6F1</color>
+</resources>
