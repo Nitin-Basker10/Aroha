@@ -211,6 +211,79 @@ void main() {
       });
     });
 
+    testWidgets(
+      'a crew who has signed still sees why JOIN is blocked, and what unblocks it',
+      (tester) async {
+        _usePhoneViewport(tester);
+        await _withSession((data, auth) async {
+          auth.startSession(_maitriStaff);
+          final booking = data.getBookingById('call_01')!;
+
+          // 1. Before signing: the button must name the crew's own step, not
+          //    a generic "CLEARANCE PENDING" the crew cannot act on.
+          await tester.pumpWidget(
+            _hostBody(data, auth, const CommsHubScreen()),
+          );
+          await tester.pump();
+          expect(find.text('SIGN DISCLAIMER FIRST'), findsOneWidget);
+          expect(find.textContaining('Step 1 of 2'), findsOneWidget);
+
+          // 2. Crew signs. The disclaimer is recorded against the crew name.
+          expect(
+            data.signCrewDisclaimer(
+              bookingId: booking.id,
+              signedBy: _maitriStaff,
+              signatoryName: _maitriStaff.name,
+              readConfirmed: true,
+            ),
+            isTrue,
+          );
+          await tester.pump();
+
+          // 3. The family gate is now the blocker. The card must say so by
+          //    name, and must show the family-consent line in its PENDING
+          //    state — previously that line only rendered once it had passed,
+          //    so the crew saw a dead button and no explanation.
+          expect(find.text('AWAITING FAMILY CONSENT'), findsOneWidget);
+          // More than one seeded booking can be awaiting consent, so assert
+          // presence rather than a unique count.
+          expect(find.textContaining('FAMILY CONSENT: PENDING'), findsWidgets);
+          expect(find.textContaining('Step 2 of 2'), findsOneWidget);
+          // Still not joinable.
+          expect(find.text('JOIN VIDEO'), findsNothing);
+
+          // 4. Family clears their side.
+          final invite = data.getInviteForBooking(booking.id)!;
+          final family = UserProfile(
+            uid: 'fam_${invite.id}',
+            name: invite.familyContactName,
+            role: UserRole.familyMember,
+            email: '',
+            linkedStationId: invite.stationId,
+            linkedPersonId: invite.personId,
+          );
+          expect(
+            data.acceptFamilyDisclaimer(
+              inviteId: invite.id,
+              signedName: invite.familyContactName,
+              readConfirmed: true,
+              user: family,
+            ),
+            isTrue,
+          );
+          expect(data.confirmFamilyConsent(invite.id, user: family), isTrue);
+          await tester.pump();
+
+          // 5. Both sides cleared: the button becomes live and the guidance
+          //    disappears entirely, leaving no stale instructions on screen.
+          expect(find.text('JOIN VIDEO'), findsOneWidget);
+          expect(find.textContaining('Step 1 of 2'), findsNothing);
+          expect(find.textContaining('Step 2 of 2'), findsNothing);
+          expect(find.text('AWAITING FAMILY CONSENT'), findsNothing);
+        });
+      },
+    );
+
     testWidgets('a station never sees or joins another station\'s booking', (
       tester,
     ) async {

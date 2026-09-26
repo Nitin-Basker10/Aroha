@@ -1110,14 +1110,24 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                                 color: context.appColors.onSurfaceVariant,
                               ),
                             ),
-                            if (booking.familyConsentGiven)
-                              Text(
-                                'FAMILY CONSENT ON FILE',
-                                style: AppTypography.telemetryXs.copyWith(
-                                  color: context.appColors.nominal,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                            // The family gate is shown in BOTH states. It
+                            // used to render only once consent was given, so a
+                            // crew member who had already signed saw a dead
+                            // JOIN button and no indication that the family
+                            // was the thing holding it up.
+                            Text(
+                              booking.familyConsentGiven
+                                  ? 'FAMILY CONSENT ON FILE: ${booking.familyContactName}'
+                                  : 'FAMILY CONSENT: PENDING — awaiting ${booking.familyContactName}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.telemetryXs.copyWith(
+                                color: booking.familyConsentGiven
+                                    ? context.appColors.nominal
+                                    : context.appColors.warning,
+                                fontWeight: FontWeight.w700,
                               ),
+                            ),
                             Text(
                               booking.crewDisclaimerSigned
                                   ? 'CREW DISCLAIMER SIGNED: ${booking.crewDisclaimerBy}'
@@ -1248,6 +1258,18 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                           ),
                     ],
                   ),
+                  // Next step for a blocked booking. Without this the crew sees
+                  // a disabled JOIN and no route forward, which reads as a
+                  // broken build rather than a deliberate two-party gate.
+                  if (_joinNextStep(auth, booking) case final step?) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      step,
+                      style: AppTypography.telemetryXs.copyWith(
+                        color: context.appColors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             );
@@ -1374,15 +1396,42 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
 
   /// Explains *why* a join button is disabled — a greyed-out button with no
   /// reason reads like a broken feature during a judge demo.
+  ///
+  /// The crew and family gates are named separately. "CLEARANCE PENDING" on
+  /// its own is ambiguous: the crew cannot clear the family side themselves,
+  /// so a generic label leaves them stuck with nothing to act on.
   String _joinBlockedLabel(CallBooking booking) {
     if (!CallAccessPolicy.isLive(booking)) return 'SLOT CLOSED';
-    if (!CallAccessPolicy.hasBothClearances(booking)) {
-      return 'CLEARANCE PENDING';
-    }
+    if (!booking.crewDisclaimerSigned) return 'SIGN DISCLAIMER FIRST';
+    if (!booking.familyConsentGiven) return 'AWAITING FAMILY CONSENT';
     if (!CallAccessPolicy.isWithinJoinWindow(booking)) {
       return 'OPENS 10 MIN BEFORE SLOT';
     }
     return 'CLEARANCE PENDING';
+  }
+
+  /// The single next step a crew member has to take, or null when the booking
+  /// is already joinable. Rendered under the controls so the blocked state
+  /// reads as a sequence rather than a dead end.
+  String? _joinNextStep(AuthService auth, CallBooking booking) {
+    if (_canJoinBooking(auth, booking)) return null;
+    if (!CallAccessPolicy.isLive(booking)) {
+      return 'This slot is ${booking.status} and can no longer be joined.';
+    }
+    if (!booking.crewDisclaimerSigned) {
+      return 'Step 1 of 2 — sign the crew disclaimer above.';
+    }
+    if (!booking.familyConsentGiven) {
+      return 'Step 2 of 2 — send the invite code to '
+          '${booking.familyContactName}. They open the Family tab on the '
+          'login screen, enter the code, accept the disclaimer, then give '
+          'consent. The call unlocks only after that.';
+    }
+    if (!CallAccessPolicy.isWithinJoinWindow(booking)) {
+      return 'Both sides are cleared. The room opens 10 minutes before the '
+          'scheduled slot.';
+    }
+    return null;
   }
 
   void _showInviteCode(BuildContext context, String code) {
