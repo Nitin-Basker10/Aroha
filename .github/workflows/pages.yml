@@ -58,6 +58,14 @@ jobs:
             --base-href /Aroha/ \
             --dart-define=NCPOR_PROXY="$NCPOR_PROXY"
 
+      - name: Strip debug symbol maps
+        run: |
+          # .symbols files hold Dart stack-trace internals used by the VM
+          # service, not runtime assets. They are roughly 10 MB of the bundle
+          # and have no business being publicly served.
+          find build/web -type f -name '*.symbols' -delete
+          echo "publish size: $(du -sh build/web | cut -f1)"
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
