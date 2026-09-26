@@ -37,6 +37,12 @@ jobs:
           cache: true
 
       - name: Build web release
+        env:
+          # The Edge Function is public and unauthenticated (verify_jwt = false,
+          # host-allowlisted), so this URL is not a secret and is safe to
+          # inline. A repository variable named NCPOR_PROXY overrides it, which
+          # is useful if the Supabase project is ever recreated.
+          NCPOR_PROXY: ${{ vars.NCPOR_PROXY || 'https://qznvgjsenqtdxoidnuht.supabase.co/functions/v1/npdc-proxy?url=' }}
         run: |
           flutter pub get
           # --base-href must match the Pages path exactly: this repo serves at
@@ -48,14 +54,9 @@ jobs:
           # cannot read it directly; the function fetches server-side. The
           # trailing "?url=" is required — the app appends the percent-encoded
           # target to this prefix.
-          #
-          # Stored as a repository variable rather than hardcoded so the key and
-          # project can change without editing this file. Define it under
-          # Settings -> Secrets and variables -> Actions -> Variables as
-          # NCPOR_PROXY.
           flutter build web --release \
             --base-href /Aroha/ \
-            --dart-define=NCPOR_PROXY="${{ vars.NCPOR_PROXY }}"
+            --dart-define=NCPOR_PROXY="$NCPOR_PROXY"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

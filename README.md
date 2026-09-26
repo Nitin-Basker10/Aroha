@@ -34,12 +34,18 @@ Pushed to GitHub Pages by `.github/workflows/pages.yml` on every push to
 https://nitin-basker10.github.io/Aroha/
 ```
 
-One-time repo setting: **Settings → Pages → Source → GitHub Actions**, and
-define the `NCPOR_PROXY` repository variable (Settings → Secrets and
-variables → Actions → Variables) as:
+**One-time setup:** in the repo, **Settings → Pages → Build and deployment
+→ Source → GitHub Actions**. Without that toggle the workflow builds
+successfully but the deploy step fails, because Pages has nowhere to
+publish.
+
+The telemetry proxy URL is inlined in the workflow, since the Edge Function
+is public and unauthenticated. To point at a different Supabase project,
+define a repository variable named `NCPOR_PROXY` (Settings → Secrets and
+variables → Actions → Variables) and it takes precedence:
 
 ```
-https://qznvgjsenqtdxoidnuht.supabase.co/functions/v1/npdc-proxy?url=
+https://<project>.supabase.co/functions/v1/npdc-proxy?url=
 ```
 
 `--base-href /Aroha/` must track the repo name; a mismatch renders a blank
