@@ -213,10 +213,16 @@ roster or other slots. Access is by HQ/crew-issued invite code only.
 
 **Calls:** `VideoCallScreen` (flutter_webrtc) — local preview, mic/cam
 controls, call timer vs allotted minutes, REC banner + monitored-link
-strip. Remote leg peers through the HQ relay when signaling is deployed;
-voice bookings run in voice mode. Android camera/mic permissions are in
-`AndroidManifest.xml`; iOS needs `NSCameraUsageDescription` /
-`NSMicrophoneUsageDescription` when the iOS folder is added.
+strip. **Local preview only in this build:** there is no `RTCPeerConnection`,
+ICE, SDP, or signaling anywhere in `lib/`, so the room shows only the
+user's own camera and states `REMOTE RELAY NOT CONFIGURED` /
+`CALL COMPLIANCE GATE ACTIVE — REMOTE RELAY NOT DEPLOYED IN THIS MVP`.
+No peer connection, recording, or encryption is claimed or implied. A
+genuine remote leg needs a signaling channel and TURN/relay, which is
+separate work. Voice bookings run in voice mode. Android camera/mic
+permissions are in `AndroidManifest.xml`; iOS needs
+`NSCameraUsageDescription` / `NSMicrophoneUsageDescription` when the iOS
+folder is added.
 
 **Demo:** family code `MTR-2026` → Priya Sharma → call_01.
 
