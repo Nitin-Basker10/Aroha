@@ -84,13 +84,18 @@ class HqCommandScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'SECTOR VISUAL FEEDS // OPTICAL CAM',
-                      style: AppTypography.labelSm.copyWith(
-                        letterSpacing: 1.2,
-                        color: context.appColors.onSurfaceVariant,
+                    Flexible(
+                      child: Text(
+                        'SECTOR VISUAL FEEDS // OPTICAL CAM',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.labelSm.copyWith(
+                          letterSpacing: 1.2,
+                          color: context.appColors.onSurfaceVariant,
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Text(
                       'LIVE DOWNLINK',
                       style: AppTypography.telemetryXs.copyWith(
@@ -112,7 +117,7 @@ class HqCommandScreen extends StatelessWidget {
                         statusColor: context.appColors.nominal,
                         imageUrl: stations[0].sectorLiveCamUrl,
                         onTap: () {
-                          data.selectStation('maitri');
+                          data.selectStation('maitri', user: auth.currentUser);
                           onNavigateToTab?.call(1);
                         },
                       ),
@@ -127,7 +132,7 @@ class HqCommandScreen extends StatelessWidget {
                         statusColor: context.appColors.nominal,
                         imageUrl: stations[1].sectorLiveCamUrl,
                         onTap: () {
-                          data.selectStation('bharati');
+                          data.selectStation('bharati', user: auth.currentUser);
                           onNavigateToTab?.call(1);
                         },
                       ),
@@ -141,13 +146,18 @@ class HqCommandScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'FIELD OUTPOST DIAGNOSTICS & TELEMETRY',
-                      style: AppTypography.labelSm.copyWith(
-                        letterSpacing: 1.2,
-                        color: context.appColors.onSurfaceVariant,
+                    Flexible(
+                      child: Text(
+                        'FIELD OUTPOST DIAGNOSTICS & TELEMETRY',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.labelSm.copyWith(
+                          letterSpacing: 1.2,
+                          color: context.appColors.onSurfaceVariant,
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Text(
                       '${stations.length}/${stations.length} SYNCED',
                       style: AppTypography.telemetryXs.copyWith(
@@ -190,25 +200,32 @@ class HqCommandScreen extends StatelessWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${station.code} // ${station.location.split(',').last.trim().toUpperCase()}',
-                                  style: AppTypography.telemetryXs.copyWith(
-                                    color: context.appColors.onSurfaceVariant,
+                            Flexible(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${station.code} // ${station.location.split(',').last.trim().toUpperCase()}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTypography.telemetryXs.copyWith(
+                                      color: context.appColors.onSurfaceVariant,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  station.name,
-                                  style: AppTypography.titleMd.copyWith(
-                                    color: context.appColors.onSurface,
-                                    fontWeight: FontWeight.w700,
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    station.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTypography.titleMd.copyWith(
+                                      color: context.appColors.onSurface,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
+                            const SizedBox(width: 8),
                             StatusBadge(status: station.status),
                           ],
                         ),
@@ -298,7 +315,10 @@ class HqCommandScreen extends StatelessWidget {
                                 ),
                                 InkWell(
                                   onTap: () {
-                                    data.selectStation(station.id);
+                                    data.selectStation(
+                                      station.id,
+                                      user: auth.currentUser,
+                                    );
                                     onNavigateToTab?.call(
                                       2,
                                     ); // Jump to inventory
@@ -318,12 +338,22 @@ class HqCommandScreen extends StatelessWidget {
                         ],
 
                         // Action Buttons
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
+                        //
+                        // Wrap, not Row: at 412px the two full-width labels do
+                        // not fit side by side, and a Row would clip them.
+                        // Wrap drops the second button onto its own line
+                        // instead of overflowing.
+                        Wrap(
+                          alignment: WrapAlignment.end,
+                          spacing: 8,
+                          runSpacing: 6,
                           children: [
                             OutlinedButton.icon(
                               onPressed: () {
-                                data.selectStation(station.id);
+                                data.selectStation(
+                                  station.id,
+                                  user: auth.currentUser,
+                                );
                                 onNavigateToTab?.call(2);
                               },
                               icon: Icon(Icons.inventory_2_outlined, size: 13),
@@ -336,10 +366,12 @@ class HqCommandScreen extends StatelessWidget {
                                 textStyle: AppTypography.labelSm,
                               ),
                             ),
-                            const SizedBox(width: 8),
                             ElevatedButton.icon(
                               onPressed: () {
-                                data.selectStation(station.id);
+                                data.selectStation(
+                                  station.id,
+                                  user: auth.currentUser,
+                                );
                                 onNavigateToTab?.call(
                                   1,
                                 ); // Jump to station detail
@@ -367,13 +399,18 @@ class HqCommandScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'ACTIVE EXPEDITION ALERTS & ANOMALIES',
-                      style: AppTypography.labelSm.copyWith(
-                        letterSpacing: 1.2,
-                        color: context.appColors.onSurfaceVariant,
+                    Flexible(
+                      child: Text(
+                        'ACTIVE EXPEDITION ALERTS & ANOMALIES',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.labelSm.copyWith(
+                          letterSpacing: 1.2,
+                          color: context.appColors.onSurfaceVariant,
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Text(
                       '${data.alerts.where((a) => !a.resolved).length} UNRESOLVED',
                       style: AppTypography.telemetryXs.copyWith(
@@ -445,15 +482,21 @@ class HqCommandScreen extends StatelessWidget {
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(
-                                      '${alert.stationId.toUpperCase()} // ${alert.type.toUpperCase()}',
-                                      style: AppTypography.telemetryXs.copyWith(
-                                        color: isCritical
-                                            ? context.appColors.critical
-                                            : context.appColors.warning,
-                                        fontWeight: FontWeight.w700,
+                                    Flexible(
+                                      child: Text(
+                                        '${alert.stationId.toUpperCase()} // ${alert.type.toUpperCase()}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: AppTypography.telemetryXs
+                                            .copyWith(
+                                              color: isCritical
+                                                  ? context.appColors.critical
+                                                  : context.appColors.warning,
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                       ),
                                     ),
+                                    const SizedBox(width: 8),
                                     Text(
                                       '${DateTime.now().difference(alert.createdAt).inMinutes}m ago',
                                       style: AppTypography.telemetryXs.copyWith(
@@ -548,13 +591,18 @@ class HqCommandScreen extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    camLabel,
-                    style: AppTypography.telemetryXs.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      camLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.telemetryXs.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 6),
                   Container(
                     width: 6,
                     height: 6,

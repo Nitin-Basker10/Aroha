@@ -15,7 +15,8 @@ Future<void> main() async {
   final source = NporDataSource();
   stdout.writeln('Base URL : ${source.baseUrl}');
   stdout.writeln(
-      'Proxy    : ${source.proxyPrefix.isEmpty ? '(none — direct)' : source.proxyPrefix}');
+    'Proxy    : ${source.proxyPrefix.isEmpty ? '(none — direct)' : source.proxyPrefix}',
+  );
   stdout.writeln('Freshness: ${NporReading.freshFor.inHours}h window');
   stdout.writeln('');
 
@@ -26,13 +27,20 @@ Future<void> main() async {
 
     final windKt = reading.windSpeedKnots?.toStringAsFixed(1) ?? 'n/a';
     stdout.writeln(stationId);
-    stdout.writeln('  status     : ${reading.status}  (${reading.coverageLabel})');
-    stdout
-        .writeln('  observed   : ${reading.observedLabel}  (${reading.ageLabel} ago)');
-    stdout.writeln('  temperature: ${reading.temperatureC ?? 'n/a'} °C'
-        '  (24h low ${reading.temperatureMinC?.toStringAsFixed(1) ?? 'n/a'} °C)');
-    stdout.writeln('  wind       : $windKt kt'
-        '${reading.windMaxKnots != null ? ' (gust ${reading.windMaxKnots!.toStringAsFixed(0)} kt)' : ''}');
+    stdout.writeln(
+      '  status     : ${reading.status}  (${reading.coverageLabel})',
+    );
+    stdout.writeln(
+      '  observed   : ${reading.observedLabel}  (${reading.ageLabel} ago)',
+    );
+    stdout.writeln(
+      '  temperature: ${reading.temperatureC ?? 'n/a'} °C'
+      '  (24h low ${reading.temperatureMinC?.toStringAsFixed(1) ?? 'n/a'} °C)',
+    );
+    stdout.writeln(
+      '  wind       : $windKt kt'
+      '${reading.windMaxKnots != null ? ' (gust ${reading.windMaxKnots!.toStringAsFixed(0)} kt)' : ''}',
+    );
     stdout.writeln('  pressure   : ${reading.airPressureHpa ?? 'n/a'} hPa');
     stdout.writeln('  humidity   : ${reading.relativeHumidityPct ?? 'n/a'} %');
     stdout.writeln('  endpoints  : ${reading.endpoints.join(', ')}');

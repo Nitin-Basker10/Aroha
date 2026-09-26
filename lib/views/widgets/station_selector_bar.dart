@@ -87,7 +87,7 @@ class StationSelectorBar extends StatelessWidget {
                   child: InkWell(
                     onTap: isLocked
                         ? null
-                        : () => data.selectStation(station.id),
+                        : () => data.selectStation(station.id, user: user),
                     borderRadius: BorderRadius.circular(3),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),

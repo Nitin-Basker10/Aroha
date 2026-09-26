@@ -1,17 +1,20 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/utils/call_access.dart';
 import '../../models/call_booking.dart';
+import '../../services/auth_service.dart';
+import '../../services/polar_data_service.dart';
 
 /// Satellite call room — voice + low-res video for crew ↔ family.
 ///
-/// Media path today: local camera/mic preview via flutter_webrtc. The
-/// remote leg plugs into the mission signaling relay when deployed
-/// (see [_remoteHint]); until then the room runs in monitored-preview
-/// mode with recording banner + compliance notice, which matches the
-/// confidential-link policy: nothing is peered without HQ relay.
+/// The current MVP build demonstrates booking authorization, consent gates,
+/// and local camera/microphone preview through flutter_webrtc. A remote
+/// signaling/relay leg is not deployed yet, so the room never claims that a
+/// peer is connected when it is not.
 class VideoCallScreen extends StatefulWidget {
   final CallBooking booking;
   final String displayName;
@@ -28,7 +31,8 @@ class VideoCallScreen extends StatefulWidget {
   State<VideoCallScreen> createState() => _VideoCallScreenState();
 }
 
-class _VideoCallScreenState extends State<VideoCallScreen> {
+class _VideoCallScreenState extends State<VideoCallScreen>
+    with WidgetsBindingObserver {
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
 
@@ -36,41 +40,163 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   bool _micOn = true;
   bool _camOn = true;
   bool _mediaReady = false;
+  bool _mediaInitializing = false;
   String? _mediaError;
   Duration _elapsed = Duration.zero;
   Timer? _timer;
 
-  bool get _isVideo => widget.booking.channelType != 'satellite-voice';
+  CallBooking? _activeBooking;
+  bool _accessResolved = false;
+  bool _accessGranted = false;
+  String? _accessMessage;
+
+  CallBooking get _booking => _activeBooking ?? widget.booking;
+  bool get _isVideo => _booking.channelType != 'satellite-voice';
 
   @override
   void initState() {
     super.initState();
-    _initRenderers();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _elapsed += const Duration(seconds: 1));
-    });
+    WidgetsBinding.instance.addObserver(this);
+    // Resolve authorization before requesting camera/microphone access. A
+    // route is not a security boundary; the current session and current
+    // booking must both authorize the call.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _resolveAccess());
+  }
+
+  Future<void> _resolveAccess() async {
+    if (!mounted || _accessResolved) return;
+    try {
+      final auth = context.read<AuthService>();
+      final data = context.read<PolarDataService>();
+      final current = data.getBookingById(widget.booking.id);
+      final invite = data.getInviteForBooking(widget.booking.id);
+      final allowed =
+          current != null &&
+          CallAccessPolicy.canJoin(
+            user: auth.currentUser,
+            booking: current,
+            invite: invite,
+            familySide: widget.isFamilySide,
+          );
+      if (!mounted) return;
+      setState(() {
+        _activeBooking = current;
+        _accessGranted = allowed;
+        _accessResolved = true;
+        if (!allowed) {
+          _accessMessage = widget.isFamilySide
+              ? 'This family invite is no longer cleared for this call.'
+              : 'Your session is not cleared for this call slot.';
+        }
+      });
+      if (!allowed) return;
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() => _elapsed += const Duration(seconds: 1));
+        if (_elapsed.inMinutes >= _booking.durationMinutes) {
+          unawaited(_hangUp());
+        }
+      });
+      await _initRenderers();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _accessGranted = false;
+        _accessResolved = true;
+        _accessMessage = 'Call authorization could not be verified.';
+      });
+    }
   }
 
   Future<void> _initRenderers() async {
+    if (_mediaInitializing) return;
+    _mediaInitializing = true;
     try {
       await _localRenderer.initialize();
       await _remoteRenderer.initialize();
-      final stream = await navigator.mediaDevices.getUserMedia({
-        'audio': true,
-        'video': _isVideo ? {'facingMode': 'user'} : false,
-      });
+
+      MediaStream? stream;
+      Object? mediaFailure;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          'audio': true,
+          'video': _isVideo ? {'facingMode': 'user'} : false,
+        });
+      } catch (error) {
+        mediaFailure = error;
+        // A camera-less or camera-denied device must not lose the audio leg.
+        if (_isVideo) {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              'audio': true,
+              'video': false,
+            });
+            mediaFailure = null;
+          } catch (audioError) {
+            mediaFailure = audioError;
+          }
+        }
+      }
+
       if (!mounted) {
-        await stream.dispose();
+        await stream?.dispose();
         return;
       }
+      if (stream == null) {
+        setState(() {
+          _mediaError = _friendlyMediaError(mediaFailure);
+          _mediaReady = false;
+          _micOn = false;
+          _camOn = false;
+        });
+        return;
+      }
+
+      final acquiredStream = stream;
+      final hasVideo = acquiredStream.getVideoTracks().isNotEmpty;
       setState(() {
-        _localStream = stream;
-        _localRenderer.srcObject = stream;
+        _localStream = acquiredStream;
+        _localRenderer.srcObject = acquiredStream;
         _mediaReady = true;
+        _mediaError = hasVideo
+            ? null
+            : 'Camera unavailable — continuing with voice preview.';
+        _micOn = acquiredStream.getAudioTracks().isNotEmpty;
+        _camOn = hasVideo;
       });
-    } catch (e) {
-      if (mounted) setState(() => _mediaError = e.toString());
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _mediaError = _friendlyMediaError(error);
+          _mediaReady = false;
+        });
+      }
+    } finally {
+      _mediaInitializing = false;
     }
+  }
+
+  String _friendlyMediaError(Object? error) {
+    final text = error?.toString().toLowerCase() ?? '';
+    if (text.contains('notallowed') || text.contains('permission')) {
+      return 'Camera/microphone permission denied. Allow access in browser or device settings, then retry.';
+    }
+    if (text.contains('notfound') || text.contains('devicesnotfound')) {
+      return 'No camera or microphone was found on this device.';
+    }
+    if (text.contains('insecure') || text.contains('secure context')) {
+      return 'Media access requires HTTPS (or localhost) and browser permission.';
+    }
+    if (text.contains('notreadable') || text.contains('in use')) {
+      return 'The camera or microphone is already in use by another application.';
+    }
+    return 'Local media could not be started. Check device permissions and retry.';
+  }
+
+  Future<void> _retryMedia() async {
+    if (_mediaInitializing || _mediaReady) return;
+    setState(() => _mediaError = null);
+    await _initRenderers();
   }
 
   void _toggleMic() {
@@ -96,12 +222,39 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   Future<void> _switchCamera() async {
+    final tracks = _localStream?.getVideoTracks() ?? [];
+    if (tracks.isEmpty) return;
     try {
-      final tracks = _localStream?.getVideoTracks() ?? [];
-      if (tracks.isNotEmpty) {
-        await Helper.switchCamera(tracks.first);
-      }
+      await Helper.switchCamera(tracks.first);
+    } catch (error) {
+      if (mounted) setState(() => _mediaError = _friendlyMediaError(error));
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      unawaited(_pauseMedia());
+    }
+  }
+
+  Future<void> _pauseMedia() async {
+    final stream = _localStream;
+    _localStream = null;
+    _localRenderer.srcObject = null;
+    try {
+      await stream?.dispose();
     } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _mediaReady = false;
+        _micOn = false;
+        _camOn = false;
+        _mediaError = 'Call media paused. Retry when you are ready.';
+      });
+    }
   }
 
   Future<void> _hangUp() async {
@@ -116,8 +269,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
-    _localStream?.dispose();
+    final stream = _localStream;
+    _localStream = null;
+    if (stream != null) unawaited(stream.dispose());
     _localRenderer.dispose();
     _remoteRenderer.dispose();
     super.dispose();
@@ -126,19 +282,46 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   String get _elapsedLabel {
     final m = _elapsed.inMinutes.toString().padLeft(2, '0');
     final s = (_elapsed.inSeconds % 60).toString().padLeft(2, '0');
-    return '$m:$s / ${widget.booking.durationMinutes}m allotted';
+    return '$m:$s / ${_booking.durationMinutes}m allotted';
+  }
+
+  Widget _buildAccessDenied() {
+    return Scaffold(
+      appBar: AppBar(title: const Text('CALL ACCESS DENIED')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            _accessMessage ?? 'This call is not available for your session.',
+            textAlign: TextAlign.center,
+            style: AppTypography.bodyMd.copyWith(
+              color: context.appColors.onSurface,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_accessResolved) {
+      return Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: context.appColors.primary),
+        ),
+      );
+    }
+    if (!_accessGranted) return _buildAccessDenied();
+
     return Scaffold(
       backgroundColor: context.appColors.surfaceLowest,
       appBar: AppBar(
         backgroundColor: context.appColors.canvas,
         title: Text(
           _isVideo
-              ? 'SATELLITE VIDEO // MONITORED'
-              : 'SATELLITE VOICE // MONITORED',
+              ? 'SATELLITE VIDEO // PREVIEW'
+              : 'SATELLITE VOICE // PREVIEW',
           style: AppTypography.labelSm.copyWith(
             color: context.appColors.critical,
             letterSpacing: 1,
@@ -165,7 +348,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  'REC',
+                  'PREVIEW',
                   style: AppTypography.telemetryXs.copyWith(
                     color: context.appColors.onErrorContainer,
                     fontWeight: FontWeight.w800,
@@ -203,15 +386,22 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'WAITING FOR PEER VIA HQ RELAY…',
+                                'REMOTE RELAY NOT CONFIGURED',
                                 style: AppTypography.telemetrySm.copyWith(
-                                  color: context.appColors.nominal,
+                                  color: context.appColors.warning,
+                                ),
+                              ),
+                              Text(
+                                'This MVP demonstrates local media and call clearance only.',
+                                textAlign: TextAlign.center,
+                                style: AppTypography.telemetryXs.copyWith(
+                                  color: context.appColors.onSurfaceVariant,
                                 ),
                               ),
                               Text(
                                 widget.isFamilySide
-                                    ? widget.booking.personName
-                                    : widget.booking.familyContactName,
+                                    ? _booking.personName
+                                    : _booking.familyContactName,
                                 style: AppTypography.telemetryXs.copyWith(
                                   color: context.appColors.onSurfaceVariant,
                                 ),
@@ -261,12 +451,25 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     child: _mediaError != null
                         ? Padding(
                             padding: const EdgeInsets.all(12),
-                            child: Text(
-                              'LOCAL MEDIA UNAVAILABLE\n$_mediaError',
-                              style: AppTypography.telemetryXs.copyWith(
-                                color: context.appColors.critical,
-                              ),
-                              textAlign: TextAlign.center,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'LOCAL MEDIA UNAVAILABLE\n$_mediaError',
+                                  style: AppTypography.telemetryXs.copyWith(
+                                    color: context.appColors.critical,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 8),
+                                OutlinedButton.icon(
+                                  onPressed: _mediaInitializing
+                                      ? null
+                                      : _retryMedia,
+                                  icon: const Icon(Icons.refresh, size: 14),
+                                  label: const Text('RETRY MEDIA'),
+                                ),
+                              ],
                             ),
                           )
                         : !_mediaReady
@@ -329,7 +532,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
               ),
             ),
             child: Text(
-              'MONITORED GOVT LINK — no research, locations or operations talk.',
+              'CALL COMPLIANCE GATE ACTIVE — REMOTE RELAY NOT DEPLOYED IN THIS MVP.',
               style: AppTypography.telemetryXs.copyWith(
                 color: context.appColors.warning,
               ),
@@ -346,18 +549,21 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   icon: _micOn ? Icons.mic : Icons.mic_off,
                   label: _micOn ? 'MUTE' : 'UNMUTE',
                   onTap: _toggleMic,
+                  enabled: _localStream?.getAudioTracks().isNotEmpty ?? false,
                 ),
                 if (_isVideo)
                   _controlButton(
                     icon: _camOn ? Icons.videocam : Icons.videocam_off,
                     label: _camOn ? 'CAM OFF' : 'CAM ON',
                     onTap: _toggleCam,
+                    enabled: _localStream?.getVideoTracks().isNotEmpty ?? false,
                   ),
                 if (_isVideo)
                   _controlButton(
                     icon: Icons.cameraswitch,
                     label: 'FLIP',
                     onTap: _switchCamera,
+                    enabled: _localStream?.getVideoTracks().isNotEmpty ?? false,
                   ),
                 _controlButton(
                   icon: Icons.call_end,
@@ -380,10 +586,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     required VoidCallback onTap,
     Color? background,
     Color? foregroundColor,
+    bool enabled = true,
   }) {
     final buttonColor = background ?? context.appColors.surfaceHigh;
     return InkWell(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(30),
       child: Column(
         children: [
@@ -397,7 +604,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
             ),
             child: Icon(
               icon,
-              color: foregroundColor ?? context.appColors.onSurface,
+              color: enabled
+                  ? (foregroundColor ?? context.appColors.onSurface)
+                  : context.appColors.onSurfaceVariant,
               size: 22,
             ),
           ),
@@ -405,7 +614,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
           Text(
             label,
             style: AppTypography.telemetryXs.copyWith(
-              color: context.appColors.onSurfaceVariant,
+              color: enabled
+                  ? context.appColors.onSurfaceVariant
+                  : context.appColors.outline,
             ),
           ),
         ],

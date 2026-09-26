@@ -228,27 +228,34 @@ class _LoginRouterScreenState extends State<LoginRouterScreen>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: context.appColors.nominal,
-                      shape: BoxShape.circle,
+              Flexible(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: context.appColors.nominal,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'SAT-LINK: NOMINAL (99.4%)',
-                    style: AppTypography.telemetryXs.copyWith(
-                      color: context.appColors.nominal,
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        'MVP LINK: LOCAL DEMO SESSION',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.telemetryXs.copyWith(
+                          color: context.appColors.nominal,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Text(
-                'CRYPTO-TLS v1.3',
+                'DEMO SESSION',
                 style: AppTypography.telemetryXs.copyWith(
                   color: context.appColors.onSurfaceVariant,
                 ),
@@ -867,7 +874,7 @@ class _PortalLoginFormState extends State<_PortalLoginForm> {
                 ],
               ),
               Text(
-                'CRYPTO-TLS v1.3',
+                'DEMO SESSION',
                 style: AppTypography.telemetryXs.copyWith(
                   color: context.appColors.onSurfaceVariant,
                 ),

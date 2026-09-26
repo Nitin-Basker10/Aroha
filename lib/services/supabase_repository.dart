@@ -521,6 +521,7 @@ FamilyInvite inviteFromRow(Map<String, dynamic> r) => FamilyInvite(
   disclaimerSignedAt: r['disclaimer_signed_at'] != null
       ? DateTime.tryParse(r['disclaimer_signed_at'] as String)
       : null,
+  disclaimerVersion: r['disclaimer_version'] ?? 'v1',
 );
 
 Map<String, dynamic> inviteToRow(FamilyInvite i) => {

@@ -1,10 +1,13 @@
+import 'dart:math';
+
 /// Family call invite — links one satellite call booking to one family
 /// member through a short shareable code. The family portal session is
 /// created from this invite, never from open registration, so families
 /// can only ever see their own call slot.
 class FamilyInvite {
   final String id;
-  final String inviteCode; // e.g. "MTR-7Q2X" — shared out-of-band by HQ/crew
+  final String
+  inviteCode; // e.g. "MTR-7Q2X4K9P" — shared out-of-band by HQ/crew
   final String bookingId;
   final String stationId;
   final String personId;
@@ -15,7 +18,7 @@ class FamilyInvite {
   final DateTime createdAt;
 
   /// Compliance fields (DPDP Act 2023 / IT Act)
-  final bool consentGiven; // family consents to logging/recording
+  final bool consentGiven; // family consents to the monitored-call briefing
   final DateTime? consentAt;
   final bool briefingAcked; // family acked "no research disclosure" briefing
 
@@ -52,6 +55,7 @@ class FamilyInvite {
     bool? disclaimerAccepted,
     String? disclaimerSignedName,
     DateTime? disclaimerSignedAt,
+    String? disclaimerVersion,
   }) {
     return FamilyInvite(
       id: id,
@@ -70,21 +74,22 @@ class FamilyInvite {
       disclaimerAccepted: disclaimerAccepted ?? this.disclaimerAccepted,
       disclaimerSignedName: disclaimerSignedName ?? this.disclaimerSignedName,
       disclaimerSignedAt: disclaimerSignedAt ?? this.disclaimerSignedAt,
+      disclaimerVersion: disclaimerVersion ?? this.disclaimerVersion,
     );
   }
 
-  /// Short human-readable code derived from the invite id.
+  /// Human-readable code with a cryptographically random suffix. Codes are
+  /// shared out-of-band, so they must not be predictable from the clock.
   static String makeCode(String stationId) {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final random = Random.secure();
+    final suffix = List.generate(
+      8,
+      (_) => alphabet[random.nextInt(alphabet.length)],
+    ).join();
     final prefix = stationId.length >= 3
         ? stationId.substring(0, 3).toUpperCase()
         : stationId.toUpperCase();
-    final suffix = DateTime.now().millisecondsSinceEpoch
-        .toRadixString(36)
-        .toUpperCase()
-        .replaceAll(RegExp(r'[^A-Z0-9]'), '');
-    final tail = suffix.length >= 4
-        ? suffix.substring(suffix.length - 4)
-        : suffix.padLeft(4, 'X');
-    return '$prefix-$tail';
+    return '$prefix-$suffix';
   }
 }

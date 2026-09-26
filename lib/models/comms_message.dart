@@ -10,6 +10,9 @@ class CommsMessage {
   final String priority; // routine / urgent / emergency
   final DateTime sentAt;
   final bool read;
+
+  /// Sender-asserted transport encryption. Defaults to **false** (unknown) so
+  /// a message can never claim a protection level that was not verified.
   final bool isEncrypted;
   final String? stationId; // Station context for scoping (sender station)
   final String?
@@ -26,7 +29,7 @@ class CommsMessage {
     required this.priority,
     required this.sentAt,
     this.read = false,
-    this.isEncrypted = true,
+    this.isEncrypted = false,
     this.stationId,
     this.recipientStationId,
   });
@@ -93,7 +96,7 @@ class CommsMessage {
           ? DateTime.parse(map['sentAt'])
           : DateTime.now(),
       read: map['read'] ?? false,
-      isEncrypted: map['isEncrypted'] ?? true,
+      isEncrypted: map['isEncrypted'] == true,
       stationId: map['stationId'],
       recipientStationId: map['recipientStationId'],
     );

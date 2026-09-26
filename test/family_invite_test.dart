@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:aroha_polar/models/call_booking.dart';
+import 'package:aroha_polar/models/family_invite.dart';
 import 'package:aroha_polar/models/user_role.dart';
 import 'package:aroha_polar/services/auth_service.dart';
 import 'package:aroha_polar/services/polar_data_service.dart';
@@ -8,6 +10,15 @@ UserProfile _hq() => const UserProfile(
   name: 'Cmdr. Nitin Verma',
   role: UserRole.hqAdmin,
   email: 'nitin.verma@ncpor.res.in',
+);
+
+UserProfile _familyFor(FamilyInvite invite) => UserProfile(
+  uid: 'fam_${invite.id}',
+  name: invite.familyContactName,
+  role: UserRole.familyMember,
+  email: '',
+  linkedStationId: invite.stationId,
+  linkedPersonId: invite.personId,
 );
 
 void main() {
@@ -64,9 +75,10 @@ void main() {
     test('consent requires signed entry disclaimer first', () {
       final data = PolarDataService();
       final invite = data.getInviteByCode('MTR-2026')!;
+      final family = _familyFor(invite);
       // Fresh service: disclaimer unsigned → consent refused
       expect(invite.disclaimerAccepted, isFalse);
-      expect(data.confirmFamilyConsent(invite.id), isFalse);
+      expect(data.confirmFamilyConsent(invite.id, user: family), isFalse);
       expect(data.getInviteByCode('MTR-2026')!.consentGiven, isFalse);
       // After signing disclaimer → consent accepted
       expect(
@@ -74,32 +86,35 @@ void main() {
           inviteId: invite.id,
           signedName: 'Priya Sharma',
           readConfirmed: true,
+          user: family,
         ),
         isTrue,
       );
-      expect(data.confirmFamilyConsent(invite.id), isTrue);
+      expect(data.confirmFamilyConsent(invite.id, user: family), isTrue);
       expect(data.getInviteByCode('MTR-2026')!.consentGiven, isTrue);
     });
 
     test('consent mirrors onto booking for HQ audit', () {
       final data = PolarDataService();
       final invite = data.getInviteByCode('MTR-2026')!;
+      final family = _familyFor(invite);
       expect(
         data.acceptFamilyDisclaimer(
           inviteId: invite.id,
           signedName: 'Priya Sharma',
           readConfirmed: true,
+          user: family,
         ),
         isTrue,
       );
       expect(invite.consentGiven, isFalse);
-      expect(data.confirmFamilyConsent(invite.id), isTrue);
+      expect(data.confirmFamilyConsent(invite.id, user: family), isTrue);
       expect(data.getInviteByCode('MTR-2026')!.consentGiven, isTrue);
       expect(data.getInviteByCode('MTR-2026')!.briefingAcked, isTrue);
       final booking = data.getBookingById('call_01')!;
       expect(booking.familyConsentGiven, isTrue);
       expect(booking.briefingAcked, isTrue);
-      expect(data.confirmFamilyConsent('nope'), isFalse);
+      expect(data.confirmFamilyConsent('nope', user: family), isFalse);
     });
 
     test('station staff can invite for own station only', () {
@@ -122,13 +137,24 @@ void main() {
     test('family disclaimer gate: typed name + tick required', () {
       final data = PolarDataService();
       final invite = data.getInviteByCode('MTR-2026')!;
+      final family = _familyFor(invite);
       expect(invite.disclaimerAccepted, isFalse);
-      // Empty name / unticked box rejected
+      // Empty name / wrong name / unticked box rejected
       expect(
         data.acceptFamilyDisclaimer(
           inviteId: invite.id,
           signedName: '   ',
           readConfirmed: true,
+          user: family,
+        ),
+        isFalse,
+      );
+      expect(
+        data.acceptFamilyDisclaimer(
+          inviteId: invite.id,
+          signedName: 'Wrong Name',
+          readConfirmed: true,
+          user: family,
         ),
         isFalse,
       );
@@ -137,16 +163,18 @@ void main() {
           inviteId: invite.id,
           signedName: 'Priya Sharma',
           readConfirmed: false,
+          user: family,
         ),
         isFalse,
       );
       expect(data.getInviteByCode('MTR-2026')!.disclaimerAccepted, isFalse);
-      // Any non-empty typed name + ticked box accepted, name recorded
+      // Matching typed name + ticked box accepted, name recorded
       expect(
         data.acceptFamilyDisclaimer(
           inviteId: invite.id,
           signedName: 'Priya Sharma',
           readConfirmed: true,
+          user: family,
         ),
         isTrue,
       );
@@ -154,11 +182,22 @@ void main() {
       expect(updated.disclaimerAccepted, isTrue);
       expect(updated.disclaimerSignedName, equals('Priya Sharma'));
       expect(updated.disclaimerSignedAt, isNotNull);
+      // A signed disclaimer cannot be silently overwritten.
+      expect(
+        data.acceptFamilyDisclaimer(
+          inviteId: invite.id,
+          signedName: 'Priya Sharma',
+          readConfirmed: true,
+          user: family,
+        ),
+        isFalse,
+      );
       expect(
         data.acceptFamilyDisclaimer(
           inviteId: 'nope',
           signedName: 'x',
           readConfirmed: true,
+          user: family,
         ),
         isFalse,
       );
@@ -300,8 +339,18 @@ void main() {
       final bharatiBooking = data.getBookingById('call_02')!;
       expect(data.bookCallSlot(bharatiBooking, user: maitriStaff), isFalse);
       // Own-station booking allowed
-      final maitriBooking = data.getBookingById('call_01')!;
-      expect(data.bookCallSlot(maitriBooking, user: maitriStaff), isTrue);
+      final newMaitriBooking = CallBooking(
+        id: 'call_new_maitri',
+        stationId: 'maitri',
+        personId: 'per_mtr_01',
+        personName: 'Dr. Aarav Sharma',
+        familyContactName: 'Priya Sharma (Spouse)',
+        scheduledSlot: DateTime.now().add(const Duration(hours: 2)),
+        durationMinutes: 15,
+        status: 'booked',
+        channelType: 'satellite-voice',
+      );
+      expect(data.bookCallSlot(newMaitriBooking, user: maitriStaff), isTrue);
     });
   });
 }

@@ -68,19 +68,29 @@ class TelemetryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                Text(
-                  value,
-                  style: AppTypography.telemetryLg.copyWith(
-                    color: effectiveAccent,
+                // Flexible so a long reading + unit degrades to an ellipsis on
+                // a narrow handset instead of overflowing the card.
+                Flexible(
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.telemetryLg.copyWith(
+                      color: effectiveAccent,
+                    ),
                   ),
                 ),
                 if (unit != null) ...[
                   const SizedBox(width: 4),
-                  Text(
-                    unit!,
-                    style: AppTypography.telemetrySm.copyWith(
-                      color: context.appColors.onSurfaceVariant.withValues(
-                        alpha: 0.8,
+                  Flexible(
+                    child: Text(
+                      unit!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.telemetrySm.copyWith(
+                        color: context.appColors.onSurfaceVariant.withValues(
+                          alpha: 0.8,
+                        ),
                       ),
                     ),
                   ),

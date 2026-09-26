@@ -24,10 +24,11 @@ enum UserRole {
   const UserRole(this.id, this.label, this.description);
 
   static UserRole fromId(String id) {
-    return UserRole.values.firstWhere(
-      (role) => role.id == id,
-      orElse: () => UserRole.hqAdmin,
-    );
+    for (final role in UserRole.values) {
+      if (role.id == id) return role;
+    }
+    // Unknown/malformed cloud roles must fail closed, never as HQ admin.
+    throw FormatException('Unknown user role: $id');
   }
 
   /// Check if this role has a specific permission
@@ -148,10 +149,16 @@ class UserProfile {
   }
 
   factory UserProfile.fromMap(String uid, Map<String, dynamic> map) {
+    // Fail closed: a profile with a missing or non-string role is rejected by
+    // [UserRole.fromId] rather than silently inheriting HQ admin rights.
+    final rawRole = map['role'];
+    if (rawRole is! String) {
+      throw FormatException('Profile $uid has no usable role claim');
+    }
     return UserProfile(
       uid: uid,
       name: map['name'] ?? '',
-      role: UserRole.fromId(map['role'] ?? 'hq-admin'),
+      role: UserRole.fromId(rawRole),
       email: map['email'] ?? '',
       linkedStationId: map['linkedStationId'],
       linkedPersonId: map['linkedPersonId'],

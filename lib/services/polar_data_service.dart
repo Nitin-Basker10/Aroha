@@ -14,6 +14,7 @@ import '../models/resource_request.dart';
 import '../models/family_invite.dart';
 import '../core/utils/watney_calculator.dart';
 import '../core/utils/validators.dart';
+import '../core/utils/call_access.dart';
 import '../models/ncpor_reading.dart';
 import 'ncpor_data_source.dart';
 import 'supabase_repository.dart';
@@ -44,6 +45,15 @@ class PolarDataService extends ChangeNotifier {
   Timer? _ncporTimer;
   bool _ncporSyncing = false;
 
+  /// Cancellable cloud-sync retry wait, so a disposed service never leaves an
+  /// orphaned timer running (and widget tests never fail on a pending timer).
+  Timer? _syncRetryTimer;
+  bool _disposed = false;
+
+  /// Tests construct the service with cloud sync disabled so no network retry
+  /// timers are created. Production leaves this on.
+  final bool _enableCloudSync;
+
   String _selectedStationId = 'maitri';
 
   // Getters
@@ -54,6 +64,20 @@ class PolarDataService extends ChangeNotifier {
   List<AlertItem> get alerts => List.unmodifiable(_alerts);
   List<CommsMessage> get messages => List.unmodifiable(_messages);
   List<CallBooking> get callBookings => List.unmodifiable(_callBookings);
+
+  /// Returns only the call bookings the current session is allowed to see.
+  /// HQ oversight sees all bookings; station staff see only their own
+  /// station; family sessions use the invite-scoped portal instead.
+  List<CallBooking> getVisibleCallBookings(UserProfile? user) {
+    if (user == null || user.role == UserRole.familyMember) {
+      return const <CallBooking>[];
+    }
+    if (user.role == UserRole.hqAdmin) return callBookings;
+    return _callBookings
+        .where((booking) => booking.stationId == user.linkedStationId)
+        .toList(growable: false);
+  }
+
   List<InventoryAuditLog> get auditLogs => List.unmodifiable(_auditLogs);
   List<ResourceRequest> get resourceRequests =>
       List.unmodifiable(_resourceRequests);
@@ -108,9 +132,11 @@ class PolarDataService extends ChangeNotifier {
     );
   }
 
-  /// Returns stations accessible by the given user
+  /// Returns stations accessible by the given user.
+  /// Family sessions are invite-scoped to one call slot and must never be
+  /// handed station records — not even for their own linked station.
   List<Station> getVisibleStations(UserProfile? user) {
-    if (user == null) return [];
+    if (user == null || user.role == UserRole.familyMember) return [];
     if (user.role == UserRole.hqAdmin) return stations;
     if (user.linkedStationId != null) {
       return _stations.where((s) => s.id == user.linkedStationId).toList();
@@ -118,9 +144,10 @@ class PolarDataService extends ChangeNotifier {
     return [];
   }
 
-  /// Returns inventory accessible by the given user
+  /// Returns inventory accessible by the given user.
+  /// Family sessions never receive stock or resupply data.
   List<InventoryItem> getVisibleInventory(UserProfile? user) {
-    if (user == null) return [];
+    if (user == null || user.role == UserRole.familyMember) return [];
     if (user.role == UserRole.hqAdmin) return inventory;
     if (user.linkedStationId != null) {
       return _inventory
@@ -178,19 +205,59 @@ class PolarDataService extends ChangeNotifier {
         .toList();
   }
 
-  PolarDataService() {
+  /// Alerts visible to a session. Family sessions get nothing — station alerts
+  /// are operational data and must never reach a family device.
+  List<AlertItem> getVisibleAlerts(UserProfile? user) {
+    if (user == null || user.role == UserRole.familyMember) return const [];
+    if (user.role == UserRole.hqAdmin) return alerts;
+    return _alerts
+        .where((a) => a.stationId == user.linkedStationId)
+        .toList(growable: false);
+  }
+
+  List<Personnel> getVisiblePersonnel(UserProfile? user) {
+    if (user == null || user.role == UserRole.familyMember) return const [];
+    if (user.role == UserRole.hqAdmin) return personnel;
+    return _personnel
+        .where((p) => p.stationId == user.linkedStationId)
+        .toList(growable: false);
+  }
+
+  List<ResourceRequest> getVisibleResourceRequests(UserProfile? user) {
+    if (user == null || user.role == UserRole.familyMember) return const [];
+    if (user.role == UserRole.hqAdmin) return resourceRequests;
+    return _resourceRequests
+        .where(
+          (r) =>
+              r.fromStationId == user.linkedStationId ||
+              r.toStationId == user.linkedStationId,
+        )
+        .toList(growable: false);
+  }
+
+  PolarDataService({bool enableCloudSync = true})
+    : _enableCloudSync = enableCloudSync {
     _seedInitialData();
     recalculateAllWatneyAlerts();
-    unawaited(syncFromCloud());
+    if (_enableCloudSync) {
+      unawaited(syncFromCloud());
+    }
   }
 
   /// Cloud sync: pulls backend state when present, otherwise pushes the
   /// local seeds as first-run bootstrap. Retries briefly because the
-  /// Supabase init races provider creation at startup. Offline-safe.
+  /// Supabase init races provider creation at startup. Offline-safe, and
+  /// fully cancellable via [dispose].
   Future<void> syncFromCloud() async {
     for (var attempt = 0; attempt < 6 && !_repo.isAvailable; attempt++) {
-      await Future.delayed(const Duration(seconds: 2));
+      if (_disposed) return;
+      final completer = Completer<void>();
+      _syncRetryTimer?.cancel();
+      _syncRetryTimer = Timer(const Duration(seconds: 2), completer.complete);
+      await completer.future;
+      if (_disposed) return;
     }
+    if (_disposed) return;
     try {
       if (!_repo.isAvailable) return;
       final cloudStations = await _repo.fetchStations();
@@ -265,8 +332,9 @@ class PolarDataService extends ChangeNotifier {
         }
         _reapplyLiveReadings();
         recalculateAllWatneyAlerts();
-        notifyListeners();
+        if (!_disposed) notifyListeners();
       }
+      if (_disposed) return;
       _repo.subscribeToRemote((_) => _pullRemoteUpdates());
     } catch (_) {}
   }
@@ -304,11 +372,12 @@ class PolarDataService extends ChangeNotifier {
           changed = true;
         }
       }
-      if (changed) notifyListeners();
+      if (changed && !_disposed) notifyListeners();
     } catch (_) {}
   }
 
-  void selectStation(String stationId) {
+  void selectStation(String stationId, {UserProfile? user}) {
+    if (user == null || !user.canAccessStation(stationId)) return;
     if (_selectedStationId != stationId) {
       _selectedStationId = stationId;
       notifyListeners();
@@ -373,7 +442,9 @@ class PolarDataService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _ncporTimer?.cancel();
+    _syncRetryTimer?.cancel();
     super.dispose();
   }
 
@@ -381,7 +452,7 @@ class PolarDataService extends ChangeNotifier {
 
   bool addInventoryItem(InventoryItem item, {UserProfile? user}) {
     // Permission check
-    if (user != null && !user.canEditStation(item.stationId)) {
+    if (user == null || !user.canEditStation(item.stationId)) {
       return false;
     }
     // Duplicate ID prevention
@@ -400,8 +471,8 @@ class PolarDataService extends ChangeNotifier {
         action: 'create',
         previousQuantity: 0.0,
         newQuantity: item.currentQuantity,
-        performedByUserId: user?.uid ?? 'system',
-        performedByUserName: user?.name ?? 'System Admin',
+        performedByUserId: user.uid,
+        performedByUserName: user.name,
         timestamp: DateTime.now(),
         notes: 'Item created in catalog',
       ),
@@ -414,7 +485,7 @@ class PolarDataService extends ChangeNotifier {
   }
 
   bool updateInventoryItem(InventoryItem updatedItem, {UserProfile? user}) {
-    if (user != null && !user.canEditStation(updatedItem.stationId)) {
+    if (user == null || !user.canEditStation(updatedItem.stationId)) {
       return false;
     }
     final index = _inventory.indexWhere((i) => i.id == updatedItem.id);
@@ -431,8 +502,8 @@ class PolarDataService extends ChangeNotifier {
           action: 'update',
           previousQuantity: old.currentQuantity,
           newQuantity: updatedItem.currentQuantity,
-          performedByUserId: user?.uid ?? 'system',
-          performedByUserName: user?.name ?? 'Station Staff',
+          performedByUserId: user.uid,
+          performedByUserName: user.name,
           timestamp: DateTime.now(),
           notes: 'Item details updated',
         ),
@@ -455,7 +526,7 @@ class PolarDataService extends ChangeNotifier {
     if (index == -1) return false;
 
     final old = _inventory[index];
-    if (user != null && !user.canEditStation(old.stationId)) {
+    if (user == null || !user.canEditStation(old.stationId)) {
       return false;
     }
 
@@ -482,8 +553,8 @@ class PolarDataService extends ChangeNotifier {
         action: 'consumption',
         previousQuantity: old.currentQuantity,
         newQuantity: newQty,
-        performedByUserId: user?.uid ?? 'system',
-        performedByUserName: user?.name ?? 'Station Staff',
+        performedByUserId: user.uid,
+        performedByUserName: user.name,
         timestamp: DateTime.now(),
         notes:
             'Logged consumption of ${consumedAmount.toStringAsFixed(1)} ${old.unit}',
@@ -501,7 +572,7 @@ class PolarDataService extends ChangeNotifier {
     final index = _inventory.indexWhere((i) => i.id == itemId);
     if (index == -1) return;
     final item = _inventory[index];
-    if (user != null && !user.canEditStation(item.stationId)) {
+    if (user == null || !user.canEditStation(item.stationId)) {
       return;
     }
     _inventory.removeAt(index);
@@ -516,8 +587,8 @@ class PolarDataService extends ChangeNotifier {
         action: 'delete',
         previousQuantity: item.currentQuantity,
         newQuantity: 0.0,
-        performedByUserId: user?.uid ?? 'system',
-        performedByUserName: user?.name ?? 'System Admin',
+        performedByUserId: user.uid,
+        performedByUserName: user.name,
         timestamp: DateTime.now(),
         notes: 'Item removed from inventory',
       ),
@@ -549,7 +620,7 @@ class PolarDataService extends ChangeNotifier {
   // --- Personnel Operations ---
 
   bool addPersonnel(Personnel person, {UserProfile? user}) {
-    if (user != null && !user.canEditStation(person.stationId)) {
+    if (user == null || !user.canEditStation(person.stationId)) {
       return false;
     }
     // Duplicate prevention
@@ -564,7 +635,7 @@ class PolarDataService extends ChangeNotifier {
   }
 
   void updatePersonnel(Personnel updated, {UserProfile? user}) {
-    if (user != null && !user.canEditStation(updated.stationId)) {
+    if (user == null || !user.canEditStation(updated.stationId)) {
       return;
     }
     final index = _personnel.indexWhere((p) => p.id == updated.id);
@@ -580,7 +651,7 @@ class PolarDataService extends ChangeNotifier {
     final index = _personnel.indexWhere((p) => p.id == id);
     if (index == -1) return;
     final person = _personnel[index];
-    if (user != null && !user.canEditStation(person.stationId)) {
+    if (user == null || !user.canEditStation(person.stationId)) {
       return;
     }
     _personnel.removeAt(index);
@@ -606,7 +677,7 @@ class PolarDataService extends ChangeNotifier {
     final cycleIdx = _resupplyCycles.indexWhere((c) => c.id == cycleId);
     if (cycleIdx == -1) return false;
     final cycle = _resupplyCycles[cycleIdx];
-    if (user != null && !user.canEditStation(cycle.stationId)) {
+    if (user == null || !user.canEditStation(cycle.stationId)) {
       return false;
     }
     if (cycle.cargoItems.any((i) => i.id == cargo.id)) {
@@ -628,7 +699,7 @@ class PolarDataService extends ChangeNotifier {
     final cycleIdx = _resupplyCycles.indexWhere((c) => c.id == cycleId);
     if (cycleIdx == -1) return false;
     final cycle = _resupplyCycles[cycleIdx];
-    if (user != null && !user.canEditStation(cycle.stationId)) {
+    if (user == null || !user.canEditStation(cycle.stationId)) {
       return false;
     }
     final itemIdx = cycle.cargoItems.indexWhere((i) => i.id == cargoId);
@@ -646,7 +717,7 @@ class PolarDataService extends ChangeNotifier {
   // --- Comms & Messages ---
 
   void sendMessage(CommsMessage message, {UserProfile? user}) {
-    if (user != null && !user.hasPermission(Permission.sendMessages)) {
+    if (user == null || !user.hasPermission(Permission.sendMessages)) {
       return;
     }
     _messages.insert(0, message);
@@ -654,7 +725,10 @@ class PolarDataService extends ChangeNotifier {
     unawaited(_repo.upsertMessage(message));
   }
 
-  void markMessageRead(String messageId) {
+  void markMessageRead(String messageId, {UserProfile? user}) {
+    if (user == null) return;
+    final visible = getMessagesForUser(user);
+    if (!visible.any((message) => message.id == messageId)) return;
     final idx = _messages.indexWhere((m) => m.id == messageId);
     if (idx != -1) {
       _messages[idx] = _messages[idx].copyWith(read: true);
@@ -666,7 +740,19 @@ class PolarDataService extends ChangeNotifier {
   // --- Call Bookings ---
 
   bool bookCallSlot(CallBooking booking, {UserProfile? user}) {
-    if (user != null && !user.canEditStation(booking.stationId)) {
+    if (user == null || !user.canEditStation(booking.stationId)) {
+      return false;
+    }
+    if (!CallAccessPolicy.isSupportedChannel(booking.channelType) ||
+        !CallAccessPolicy.isValidDuration(booking.durationMinutes)) {
+      return false;
+    }
+    if (_callBookings.any((existing) => existing.id == booking.id)) {
+      return false;
+    }
+    if (booking.scheduledSlot.isBefore(
+      DateTime.now().subtract(const Duration(minutes: 5)),
+    )) {
       return false;
     }
     _callBookings.insert(0, booking);
@@ -680,12 +766,19 @@ class PolarDataService extends ChangeNotifier {
     String status, {
     UserProfile? user,
   }) {
+    const allowedStatuses = {'booked', 'live', 'completed', 'cancelled'};
+    if (!allowedStatuses.contains(status)) return false;
     final idx = _callBookings.indexWhere((b) => b.id == bookingId);
     if (idx == -1) return false;
-    if (user != null && !user.canEditStation(_callBookings[idx].stationId)) {
+    final current = _callBookings[idx];
+    if (user == null || !user.canEditStation(current.stationId)) {
       return false;
     }
-    _callBookings[idx] = _callBookings[idx].copyWith(status: status);
+    if (current.status == 'completed' || current.status == 'cancelled') {
+      return false;
+    }
+    if (current.status == status) return false;
+    _callBookings[idx] = current.copyWith(status: status);
     notifyListeners();
     unawaited(_repo.upsertBooking(_callBookings[idx]));
     return true;
@@ -695,7 +788,7 @@ class PolarDataService extends ChangeNotifier {
 
   /// Get resource requests relevant to a station (sent or received)
   List<ResourceRequest> getResourceRequestsForStation(String? stationId) {
-    if (stationId == null) return List.unmodifiable(_resourceRequests);
+    if (stationId == null) return const <ResourceRequest>[];
     return _resourceRequests
         .where(
           (r) => r.fromStationId == stationId || r.toStationId == stationId,
@@ -706,7 +799,7 @@ class PolarDataService extends ChangeNotifier {
   /// Create a new inter-station resource request.
   /// The requester must hold edit rights on the FROM station.
   bool createResourceRequest(ResourceRequest request, {UserProfile? user}) {
-    if (user != null && !user.canEditStation(request.fromStationId)) {
+    if (user == null || !user.canEditStation(request.fromStationId)) {
       return false;
     }
     _resourceRequests.insert(0, request);
@@ -726,7 +819,7 @@ class PolarDataService extends ChangeNotifier {
   }) {
     final idx = _resourceRequests.indexWhere((r) => r.id == requestId);
     if (idx == -1) return false;
-    if (user != null &&
+    if (user == null ||
         !user.canEditStation(_resourceRequests[idx].toStationId)) {
       return false;
     }
@@ -795,9 +888,18 @@ class PolarDataService extends ChangeNotifier {
     final existing = getInviteForBooking(bookingId);
     if (existing != null) return existing;
 
+    var inviteCode = FamilyInvite.makeCode(booking.stationId);
+    for (
+      var attempt = 0;
+      attempt < 5 && getInviteByCode(inviteCode) != null;
+      attempt++
+    ) {
+      inviteCode = FamilyInvite.makeCode(booking.stationId);
+    }
+
     final invite = FamilyInvite(
       id: 'fam_${DateTime.now().millisecondsSinceEpoch}',
-      inviteCode: FamilyInvite.makeCode(booking.stationId),
+      inviteCode: inviteCode,
       bookingId: booking.id,
       stationId: booking.stationId,
       personId: booking.personId,
@@ -816,19 +918,21 @@ class PolarDataService extends ChangeNotifier {
   }
 
   /// Record family consent + briefing acknowledgement, mirrored onto the
-  /// booking so HQ has a single audit trail. Requires the entry
-  /// disclaimer to be signed first. Returns false if unknown id.
-  bool confirmFamilyConsent(String inviteId) {
+  /// booking so HQ has a single audit trail. The call must come from the
+  /// family session bound to this invite; an id alone is not authorization.
+  bool confirmFamilyConsent(String inviteId, {UserProfile? user}) {
     final idx = _familyInvites.indexWhere((i) => i.id == inviteId);
-    if (idx == -1) return false;
-    if (!_familyInvites[idx].disclaimerAccepted) return false;
-    _familyInvites[idx] = _familyInvites[idx].copyWith(
+    if (idx == -1 || user == null) return false;
+    final invite = _familyInvites[idx];
+    if (!_ownsFamilyInvite(user, invite)) return false;
+    if (!invite.disclaimerAccepted || invite.consentGiven) return false;
+    _familyInvites[idx] = invite.copyWith(
       consentGiven: true,
       consentAt: DateTime.now(),
       briefingAcked: true,
     );
     final bookingIdx = _callBookings.indexWhere(
-      (b) => b.id == _familyInvites[idx].bookingId,
+      (b) => b.id == invite.bookingId,
     );
     if (bookingIdx != -1) {
       _callBookings[bookingIdx] = _callBookings[bookingIdx].copyWith(
@@ -843,17 +947,27 @@ class PolarDataService extends ChangeNotifier {
   }
 
   /// Family entry disclaimer — must be signed BEFORE the portal unlocks.
-  /// Any non-empty typed signature + the read-checkbox is accepted; the
-  /// typed name is recorded for audit. Returns false on empty/missing tick.
+  /// The typed name must match the invited family contact and the call must
+  /// be made by the family session bound to this invite. A signature cannot
+  /// be silently overwritten.
   bool acceptFamilyDisclaimer({
     required String inviteId,
     required String signedName,
     required bool readConfirmed,
+    UserProfile? user,
   }) {
     final idx = _familyInvites.indexWhere((i) => i.id == inviteId);
-    if (idx == -1 || !readConfirmed) return false;
-    if (signedName.trim().isEmpty) return false;
+    if (idx == -1 || !readConfirmed || user == null) return false;
     final invite = _familyInvites[idx];
+    if (!_ownsFamilyInvite(user, invite) || invite.disclaimerAccepted) {
+      return false;
+    }
+    final normalizedSignedName = signedName.trim().toLowerCase();
+    final normalizedInvitedName = invite.familyContactName.trim().toLowerCase();
+    if (normalizedSignedName.isEmpty ||
+        normalizedSignedName != normalizedInvitedName) {
+      return false;
+    }
     _familyInvites[idx] = invite.copyWith(
       disclaimerAccepted: true,
       disclaimerSignedName: signedName.trim(),
@@ -862,6 +976,13 @@ class PolarDataService extends ChangeNotifier {
     notifyListeners();
     unawaited(_repo.upsertInvite(_familyInvites[idx]));
     return true;
+  }
+
+  bool _ownsFamilyInvite(UserProfile user, FamilyInvite invite) {
+    return user.role == UserRole.familyMember &&
+        user.uid == 'fam_${invite.id}' &&
+        user.linkedStationId == invite.stationId &&
+        user.linkedPersonId == invite.personId;
   }
 
   /// Crew undertaking — signed station-side before joining a call.
@@ -898,24 +1019,28 @@ class PolarDataService extends ChangeNotifier {
 
   bool resolveAlert(String alertId, {UserProfile? user}) {
     final idx = _alerts.indexWhere((a) => a.id == alertId);
-    if (idx != -1) {
-      final alert = _alerts[idx];
-      if (user != null) {
-        if (!user.hasPermission(Permission.resolveAlerts)) return false;
-        if (!user.canEditStation(alert.stationId)) return false;
-      }
-      _alerts[idx] = alert.copyWith(resolved: true);
-      notifyListeners();
-      unawaited(_repo.upsertAlert(_alerts[idx]));
-      return true;
-    }
-    return false;
+    if (idx == -1) return false;
+    final alert = _alerts[idx];
+    // Fail closed: an unattributed acknowledge is not a valid operator action.
+    if (user == null) return false;
+    if (!user.hasPermission(Permission.resolveAlerts)) return false;
+    if (!user.canEditStation(alert.stationId)) return false;
+    if (alert.resolved) return false;
+    _alerts[idx] = alert.copyWith(resolved: true);
+    notifyListeners();
+    unawaited(_repo.upsertAlert(_alerts[idx]));
+    return true;
   }
 
-  void createManualAlert(AlertItem alert) {
+  bool createManualAlert(AlertItem alert, {UserProfile? user}) {
+    if (user == null) return false;
+    if (!user.hasPermission(Permission.resolveAlerts)) return false;
+    if (!user.canEditStation(alert.stationId)) return false;
+    if (_alerts.any((a) => a.id == alert.id)) return false;
     _alerts.insert(0, alert);
     notifyListeners();
     unawaited(_repo.upsertAlert(alert));
+    return true;
   }
 
   // --- Initial Mock Data Generator ---
@@ -1416,7 +1541,9 @@ class PolarDataService extends ChangeNotifier {
         personId: 'per_mtr_01',
         personName: 'Dr. Aarav Sharma',
         familyContactName: 'Priya Sharma (Spouse)',
-        scheduledSlot: DateTime.now().add(const Duration(days: 1, hours: 3)),
+        // Demo slot sits inside the join window so a judge can walk the whole
+        // consent -> clearance -> join path without waiting a day.
+        scheduledSlot: DateTime.now().add(const Duration(minutes: 5)),
         durationMinutes: 20,
         status: 'booked',
         channelType: 'low-res-video',
@@ -1456,7 +1583,7 @@ class PolarDataService extends ChangeNotifier {
         stationId: 'maitri',
         personId: 'per_mtr_01',
         personName: 'Dr. Aarav Sharma',
-        familyContactName: 'Priya Sharma (Spouse)',
+        familyContactName: 'Priya Sharma',
         createdByUserId: 'hq_admin_01',
         createdByName: 'Cmdr. Nitin Verma',
         createdAt: DateTime.now().subtract(const Duration(days: 1)),

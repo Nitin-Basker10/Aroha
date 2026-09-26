@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/utils/call_access.dart';
 import '../../models/family_invite.dart';
 import '../../models/call_booking.dart';
 import '../../services/polar_data_service.dart';
@@ -150,8 +151,11 @@ class _FamilyPortalScreenState extends State<FamilyPortalScreen> {
     final consented = invite.consentGiven && invite.briefingAcked;
     // Mutual clearance: family consent + crew disclaimer + live slot.
     final crewCleared = booking.crewDisclaimerSigned;
-    final live = booking.status == 'booked' || booking.status == 'live';
-    final joinable = consented && crewCleared && live;
+    final joinable = CallAccessPolicy.canJoinAsFamily(
+      user: context.read<AuthService>().currentUser,
+      booking: booking,
+      invite: invite,
+    );
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -211,7 +215,11 @@ class _FamilyPortalScreenState extends State<FamilyPortalScreen> {
                     ? 'Confirm consent below to proceed.'
                     : !crewCleared
                     ? 'The crew member must sign their disclaimer before you can join.'
-                    : 'This slot is no longer live. Contact HQ.',
+                    : !CallAccessPolicy.isLive(booking)
+                    ? 'This slot is no longer live. Contact HQ.'
+                    : !CallAccessPolicy.isWithinJoinWindow(booking)
+                    ? 'Join unlocks 10 minutes before the start time and closes when the slot ends.'
+                    : 'Clearance is still being processed by the station.',
                 style: AppTypography.telemetryXs.copyWith(
                   color: context.appColors.warning,
                 ),
@@ -281,8 +289,8 @@ class _FamilyPortalScreenState extends State<FamilyPortalScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '• This call is on an official Government of India satellite link.\n'
-            '• Calls are logged and may be recorded for security (DPDP Act 2023).\n'
+            '• This call is a controlled mission communication link.\n'
+            '• The operator may monitor the session under station policy; this MVP does not record media.\n'
             '• Please do not ask about research work, locations, equipment or operations — crew cannot discuss them.\n'
             '• Keep the conversation to family and personal matters.',
             style: AppTypography.bodyMd.copyWith(
@@ -379,7 +387,10 @@ class _FamilyPortalScreenState extends State<FamilyPortalScreen> {
             child: ElevatedButton(
               onPressed: (_consentChecked && _briefingChecked)
                   ? () {
-                      data.confirmFamilyConsent(invite.id);
+                      data.confirmFamilyConsent(
+                        invite.id,
+                        user: context.read<AuthService>().currentUser,
+                      );
                       setState(() {});
                     }
                   : null,
@@ -396,6 +407,18 @@ class _FamilyPortalScreenState extends State<FamilyPortalScreen> {
     CallBooking booking,
     FamilyInvite invite,
   ) {
+    final auth = context.read<AuthService>();
+    final allowed = CallAccessPolicy.canJoinAsFamily(
+      user: auth.currentUser,
+      booking: booking,
+      invite: invite,
+    );
+    if (!allowed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Call clearance is no longer valid')),
+      );
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => VideoCallScreen(
@@ -466,7 +489,7 @@ class _FamilyPortalScreenState extends State<FamilyPortalScreen> {
                 ),
                 child: Text(
                   '1. This is an official Government of India satellite link to an Antarctic/Arctic research station.\n\n'
-                  '2. All calls are logged and may be recorded for security under the DPDP Act 2023 and the IT Act 2000.\n\n'
+                  '2. The operator may monitor this session under station policy; this MVP does not record media.\n\n'
                   '3. Research work, station locations, equipment, personnel movements and operations are CONFIDENTIAL. Do not ask about them; crew are forbidden from discussing them.\n\n'
                   '4. Keep the conversation strictly to family and personal matters.\n\n'
                   '5. Misuse of this access (recording, relaying or publishing call contents) will lead to permanent withdrawal of call privileges and may invite legal action.\n\n'
@@ -518,6 +541,7 @@ class _FamilyPortalScreenState extends State<FamilyPortalScreen> {
                       inviteId: invite.id,
                       signedName: nameCtrl.text,
                       readConfirmed: readChecked,
+                      user: context.read<AuthService>().currentUser,
                     );
                     if (!ok) {
                       setGateState(

@@ -70,38 +70,44 @@ class StationDetailScreen extends StatelessWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: context.appColors.surfaceLowest
-                                    .withValues(alpha: 0.8),
-                                borderRadius: BorderRadius.circular(2),
-                                border: Border.all(
-                                  color: context.appColors.nominal.withValues(
-                                    alpha: 0.4,
-                                  ),
+                            Flexible(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
                                 ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.videocam,
-                                    size: 12,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${station.code} CAM-01 // OPTICAL LIVE',
-                                    style: AppTypography.telemetryXs.copyWith(
-                                      color: Colors.white,
+                                decoration: BoxDecoration(
+                                  color: context.appColors.surfaceLowest
+                                      .withValues(alpha: 0.8),
+                                  borderRadius: BorderRadius.circular(2),
+                                  border: Border.all(
+                                    color: context.appColors.nominal.withValues(
+                                      alpha: 0.4,
                                     ),
                                   ),
-                                ],
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.videocam,
+                                      size: 12,
+                                      color: Colors.white,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        '${station.code} CAM-01 // OPTICAL LIVE',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: AppTypography.telemetryXs
+                                            .copyWith(color: Colors.white),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
+                            const SizedBox(width: 8),
                             StatusBadge(status: station.status),
                           ],
                         ),
@@ -234,7 +240,7 @@ class StationDetailScreen extends StatelessWidget {
                       _buildSubsystemRow(
                         context: context,
                         title: 'Primary Inmarsat / VSAT Radome Feed',
-                        statusText: 'SIGNAL 99.4% // DUPLEX SYNCHRONIZED',
+                        statusText: 'SIGNAL STATUS // DEMO TELEMETRY',
                         status: 'nominal',
                         icon: Icons.satellite_alt,
                       ),
@@ -315,13 +321,18 @@ class StationDetailScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'WINTERING EXPEDITION CREW (${personnel.length})',
-                      style: AppTypography.labelSm.copyWith(
-                        letterSpacing: 1.2,
-                        color: context.appColors.onSurfaceVariant,
+                    Flexible(
+                      child: Text(
+                        'WINTERING EXPEDITION CREW (${personnel.length})',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.labelSm.copyWith(
+                          letterSpacing: 1.2,
+                          color: context.appColors.onSurfaceVariant,
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     InkWell(
                       onTap: () => onNavigateToTab?.call(4),
                       child: Text(

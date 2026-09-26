@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
+import '../../core/utils/call_access.dart';
 import '../../models/comms_message.dart';
 import '../../models/call_booking.dart';
 import '../../models/resource_request.dart';
@@ -50,7 +51,7 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
     final auth = context.watch<AuthService>();
     final user = auth.currentUser;
     final messages = data.getMessagesForUser(user);
-    final bookings = data.callBookings;
+    final bookings = data.getVisibleCallBookings(user);
 
     // Resource requests for current user's station or all for HQ
     final isHQ = user?.role == UserRole.hqAdmin;
@@ -76,10 +77,10 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
             children: [
               Expanded(
                 child: TelemetryCard(
-                  label: 'Satellite Link',
-                  value: '99.4%',
-                  unit: 'UPLINK',
-                  subtext: 'Inmarsat-C Duplex',
+                  label: 'Call Link',
+                  value: 'MVP',
+                  unit: 'DEMO',
+                  subtext: 'Remote relay not configured',
                   icon: Icons.satellite_alt,
                   accentColor: context.appColors.nominal,
                 ),
@@ -152,10 +153,12 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
+        // Header + action stay on one line on wide screens and stack on a
+        // handset, where a 34-character label plus a button cannot fit.
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final title = Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
                   Icons.swap_horiz,
@@ -163,33 +166,49 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                   color: context.appColors.nominal,
                 ),
                 const SizedBox(width: 6),
-                Text(
-                  'CROSS-STATION RESOURCE REQUESTS',
-                  style: AppTypography.labelSm.copyWith(
-                    letterSpacing: 1.2,
-                    color: context.appColors.nominal,
-                    fontWeight: FontWeight.w700,
+                Flexible(
+                  child: Text(
+                    'CROSS-STATION RESOURCE REQUESTS',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.labelSm.copyWith(
+                      letterSpacing: 1.2,
+                      color: context.appColors.nominal,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],
-            ),
-            if (!isHQ)
-              ElevatedButton.icon(
-                onPressed: () =>
-                    _showCreateResourceRequestDialog(context, data, auth),
-                icon: Icon(Icons.add, size: 13),
-                label: Text('REQUEST SUPPLIES'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: context.appColors.surfaceHigh,
-                  foregroundColor: context.appColors.onSurface,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  textStyle: AppTypography.labelSm,
-                ),
-              ),
-          ],
+            );
+            final action = !isHQ
+                ? ElevatedButton.icon(
+                    onPressed: () =>
+                        _showCreateResourceRequestDialog(context, data, auth),
+                    icon: Icon(Icons.add, size: 13),
+                    label: Text('REQUEST SUPPLIES'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: context.appColors.surfaceHigh,
+                      foregroundColor: context.appColors.onSurface,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      textStyle: AppTypography.labelSm,
+                    ),
+                  )
+                : null;
+            if (action == null) return title;
+            if (constraints.maxWidth >= 520) {
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [title, action],
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [title, const SizedBox(height: 8), action],
+            );
+          },
         ),
         const SizedBox(height: 8),
 
@@ -311,10 +330,14 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      Text(
-                        req.fromStationName,
-                        style: AppTypography.telemetryXs.copyWith(
-                          color: context.appColors.primary,
+                      Flexible(
+                        child: Text(
+                          req.fromStationName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.telemetryXs.copyWith(
+                            color: context.appColors.primary,
+                          ),
                         ),
                       ),
                       Padding(
@@ -325,17 +348,26 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                           color: context.appColors.onSurfaceVariant,
                         ),
                       ),
-                      Text(
-                        req.toStationName,
-                        style: AppTypography.telemetryXs.copyWith(
-                          color: context.appColors.nominal,
+                      Flexible(
+                        child: Text(
+                          req.toStationName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.telemetryXs.copyWith(
+                            color: context.appColors.nominal,
+                          ),
                         ),
                       ),
-                      const Spacer(),
-                      Text(
-                        'By: ${req.requestedByName}',
-                        style: AppTypography.telemetryXs.copyWith(
-                          color: context.appColors.onSurfaceVariant,
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'By: ${req.requestedByName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.end,
+                          style: AppTypography.telemetryXs.copyWith(
+                            color: context.appColors.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ],
@@ -757,29 +789,41 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'TACTICAL SATELLITE DISPATCH',
-                style: AppTypography.labelSm.copyWith(
-                  letterSpacing: 1.2,
-                  color: context.appColors.primary,
-                  fontWeight: FontWeight.w700,
+              Flexible(
+                child: Text(
+                  'TACTICAL SATELLITE DISPATCH',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.labelSm.copyWith(
+                    letterSpacing: 1.2,
+                    color: context.appColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-              Row(
-                children: [
-                  Icon(
-                    Icons.lock_outline,
-                    size: 12,
-                    color: context.appColors.nominal,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'AES-256 ENCRYPTED',
-                    style: AppTypography.telemetryXs.copyWith(
+              const SizedBox(width: 8),
+              Flexible(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.lock_outline,
+                      size: 12,
                       color: context.appColors.nominal,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        'DEMO CHANNEL — NO E2E SIGNALING',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.telemetryXs.copyWith(
+                          color: context.appColors.nominal,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -797,10 +841,14 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
               children: [
                 Icon(Icons.person, size: 14, color: context.appColors.nominal),
                 const SizedBox(width: 6),
-                Text(
-                  'TRANSMITTER: ${user?.name ?? "Authorized Operator"} (${user?.role.label ?? "Station Staff"})',
-                  style: AppTypography.telemetryXs.copyWith(
-                    color: context.appColors.onSurfaceVariant,
+                Expanded(
+                  child: Text(
+                    'TRANSMITTER: ${user?.name ?? "Authorized Operator"} (${user?.role.label ?? "Station Staff"})',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.telemetryXs.copyWith(
+                      color: context.appColors.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
@@ -853,41 +901,41 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
 
           const SizedBox(height: 10),
 
-          Row(
+          // Wrap instead of Row: three priority chips plus a send button do not
+          // fit on one line on a handset.
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 6,
+            runSpacing: 6,
             children: [
               Text('PRIORITY: ', style: AppTypography.labelSm),
-              const SizedBox(width: 6),
               ...['routine', 'urgent', 'emergency'].map((p) {
                 final isSel = _selectedPriority == p;
                 final col = context.appColors.status(p);
 
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text(
-                      p.toUpperCase(),
-                      style: AppTypography.telemetryXs.copyWith(
-                        color: isSel ? context.appColors.canvas : col,
-                        fontWeight: FontWeight.w700,
-                      ),
+                return ChoiceChip(
+                  label: Text(
+                    p.toUpperCase(),
+                    style: AppTypography.telemetryXs.copyWith(
+                      color: isSel ? context.appColors.canvas : col,
+                      fontWeight: FontWeight.w700,
                     ),
-                    selected: isSel,
-                    onSelected: (s) {
-                      if (s) setState(() => _selectedPriority = p);
-                    },
-                    selectedColor: col,
-                    backgroundColor: context.appColors.surfaceLow,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(2),
-                      side: BorderSide(
-                        color: isSel ? col : context.appColors.border,
-                      ),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
                   ),
+                  selected: isSel,
+                  onSelected: (s) {
+                    if (s) setState(() => _selectedPriority = p);
+                  },
+                  selectedColor: col,
+                  backgroundColor: context.appColors.surfaceLow,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(2),
+                    side: BorderSide(
+                      color: isSel ? col : context.appColors.border,
+                    ),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                 );
               }),
-              const Spacer(),
               ElevatedButton.icon(
                 onPressed: () {
                   if (_msgContentCtrl.text.trim().isEmpty) {
@@ -944,31 +992,43 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
     AuthService auth,
     List<CallBooking> bookings,
   ) {
+    final currentUser = auth.currentUser;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'SATELLITE CALL RESERVATIONS',
-              style: AppTypography.labelSm.copyWith(
-                letterSpacing: 1.2,
-                color: context.appColors.onSurfaceVariant,
+            Flexible(
+              child: Text(
+                'SATELLITE CALL RESERVATIONS',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.labelSm.copyWith(
+                  letterSpacing: 1.2,
+                  color: context.appColors.onSurfaceVariant,
+                ),
               ),
             ),
-            ElevatedButton.icon(
-              onPressed: () => _showBookCallDialog(context, data, auth),
-              icon: Icon(Icons.phone_in_talk, size: 13),
-              label: Text('BOOK SATELLITE SLOT'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: context.appColors.surfaceHigh,
-                foregroundColor: context.appColors.onSurface,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
+            const SizedBox(width: 8),
+            Flexible(
+              child: ElevatedButton.icon(
+                onPressed: () => _showBookCallDialog(context, data, auth),
+                icon: Icon(Icons.phone_in_talk, size: 13),
+                label: Text(
+                  'BOOK SATELLITE SLOT',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                textStyle: AppTypography.labelSm,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: context.appColors.surfaceHigh,
+                  foregroundColor: context.appColors.onSurface,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  textStyle: AppTypography.labelSm,
+                ),
               ),
             ),
           ],
@@ -994,7 +1054,7 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
         else
           ...bookings.map((booking) {
             final canInvite =
-                auth.currentUser?.canEditStation(booking.stationId) ?? false;
+                currentUser?.canEditStation(booking.stationId) ?? false;
             final invite = data.getInviteForBooking(booking.id);
             return Container(
               margin: const EdgeInsets.only(bottom: 6),
@@ -1023,15 +1083,23 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                           children: [
                             Row(
                               children: [
-                                Text(
-                                  booking.personName,
-                                  style: AppTypography.titleSm,
+                                Flexible(
+                                  child: Text(
+                                    booking.personName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTypography.titleSm,
+                                  ),
                                 ),
                                 const SizedBox(width: 8),
-                                Text(
-                                  '-> ${booking.familyContactName}',
-                                  style: AppTypography.bodySm.copyWith(
-                                    color: context.appColors.onSurfaceVariant,
+                                Flexible(
+                                  child: Text(
+                                    '-> ${booking.familyContactName}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTypography.bodySm.copyWith(
+                                      color: context.appColors.onSurfaceVariant,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1067,8 +1135,13 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                       StatusBadge(status: booking.status),
                     ],
                   ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                  // Wrap: sign / join / invite controls plus a disabled-state
+                  // label do not fit on one line on a handset.
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 6,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       if (!booking.crewDisclaimerSigned && canInvite)
                         OutlinedButton.icon(
@@ -1092,12 +1165,10 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                             side: BorderSide(color: context.appColors.critical),
                           ),
                         ),
-                      if (!booking.crewDisclaimerSigned && canInvite)
-                        const SizedBox(width: 6),
                       OutlinedButton.icon(
                         // Both sides must clear compliance before either
                         // joins: crew disclaimer + family consent + live slot.
-                        onPressed: _isJoinable(booking)
+                        onPressed: _canJoinBooking(auth, booking)
                             ? () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
@@ -1118,11 +1189,11 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                           size: 13,
                         ),
                         label: Text(
-                          _isJoinable(booking)
+                          _canJoinBooking(auth, booking)
                               ? (booking.channelType == 'satellite-voice'
                                     ? 'JOIN VOICE'
                                     : 'JOIN VIDEO')
-                              : 'CLEARANCE PENDING',
+                              : _joinBlockedLabel(booking),
                         ),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(
@@ -1134,8 +1205,7 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                           ),
                         ),
                       ),
-                      if (canInvite) ...[
-                        const SizedBox(width: 6),
+                      if (canInvite)
                         if (invite != null)
                           InkWell(
                             onTap: () =>
@@ -1150,15 +1220,20 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                           )
                         else
                           OutlinedButton.icon(
-                            onPressed: () {
-                              final created = data.createFamilyInvite(
-                                bookingId: booking.id,
-                                createdBy: auth.currentUser!,
-                              );
-                              if (created != null && context.mounted) {
-                                _showInviteCode(context, created.inviteCode);
-                              }
-                            },
+                            onPressed: currentUser == null
+                                ? null
+                                : () {
+                                    final created = data.createFamilyInvite(
+                                      bookingId: booking.id,
+                                      createdBy: currentUser,
+                                    );
+                                    if (created != null && context.mounted) {
+                                      _showInviteCode(
+                                        context,
+                                        created.inviteCode,
+                                      );
+                                    }
+                                  },
                             icon: Icon(Icons.family_restroom, size: 13),
                             label: Text('INVITE FAMILY'),
                             style: OutlinedButton.styleFrom(
@@ -1171,7 +1246,6 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                               ),
                             ),
                           ),
-                      ],
                     ],
                   ),
                 ],
@@ -1188,7 +1262,14 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
     AuthService auth,
     String bookingId,
   ) {
-    final nameCtrl = TextEditingController(text: auth.currentUser?.name ?? '');
+    final signer = auth.currentUser;
+    if (signer == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in again before signing')),
+      );
+      return;
+    }
+    final nameCtrl = TextEditingController(text: signer.name);
     bool readChecked = false;
     String? error;
 
@@ -1207,7 +1288,7 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                   children: [
                     Text(
                       '1. This is an official Government of India satellite link.\n\n'
-                      '2. The call is logged and may be recorded for security.\n\n'
+                      '2. The operator may monitor this session under station policy; this MVP does not record media.\n\n'
                       '3. You shall NOT discuss research, locations, equipment, personnel movements or operations. Family/personal matters only.\n\n'
                       '4. Breach will lead to disciplinary action under service rules.',
                       style: AppTypography.bodyMd.copyWith(
@@ -1260,7 +1341,7 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                     }
                     final ok = data.signCrewDisclaimer(
                       bookingId: bookingId,
-                      signedBy: auth.currentUser!,
+                      signedBy: signer,
                       signatoryName: nameCtrl.text,
                       readConfirmed: readChecked,
                     );
@@ -1287,12 +1368,21 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
     );
   }
 
-  /// A call room opens only when BOTH sides cleared compliance and the
-  /// slot is still live: crew disclaimer signed + family consent on file
-  /// + booking status booked/live. Applies to crew, HQ and family joins.
-  static bool _isJoinable(CallBooking booking) {
-    final live = booking.status == 'booked' || booking.status == 'live';
-    return live && booking.crewDisclaimerSigned && booking.familyConsentGiven;
+  bool _canJoinBooking(AuthService auth, CallBooking booking) {
+    return CallAccessPolicy.canJoinAsCrew(auth.currentUser, booking);
+  }
+
+  /// Explains *why* a join button is disabled — a greyed-out button with no
+  /// reason reads like a broken feature during a judge demo.
+  String _joinBlockedLabel(CallBooking booking) {
+    if (!CallAccessPolicy.isLive(booking)) return 'SLOT CLOSED';
+    if (!CallAccessPolicy.hasBothClearances(booking)) {
+      return 'CLEARANCE PENDING';
+    }
+    if (!CallAccessPolicy.isWithinJoinWindow(booking)) {
+      return 'OPENS 10 MIN BEFORE SLOT';
+    }
+    return 'CLEARANCE PENDING';
   }
 
   void _showInviteCode(BuildContext context, String code) {
@@ -1357,15 +1447,20 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'DISPATCH LOG & COMMS RELAY (${messages.length})',
-              style: AppTypography.labelSm.copyWith(
-                letterSpacing: 1.2,
-                color: context.appColors.onSurfaceVariant,
+            Flexible(
+              child: Text(
+                'DISPATCH LOG & COMMS RELAY (${messages.length})',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.labelSm.copyWith(
+                  letterSpacing: 1.2,
+                  color: context.appColors.onSurfaceVariant,
+                ),
               ),
             ),
+            const SizedBox(width: 8),
             Text(
-              'AUTHENTICATED CHANNEL',
+              'LOCAL DEMO SESSION',
               style: AppTypography.telemetryXs.copyWith(
                 color: context.appColors.nominal,
               ),
@@ -1420,22 +1515,32 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          StatusBadge(status: msg.priority),
-                          const SizedBox(width: 8),
-                          Text(
-                            msg.senderStation,
-                            style: AppTypography.labelSm.copyWith(
-                              color: context.appColors.nominal,
+                      Flexible(
+                        child: Row(
+                          children: [
+                            StatusBadge(status: msg.priority),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                msg.senderStation,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.labelSm.copyWith(
+                                  color: context.appColors.nominal,
+                                ),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            ':: ${msg.senderName}',
-                            style: AppTypography.labelSm,
-                          ),
-                        ],
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                ':: ${msg.senderName}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.labelSm,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       if (!msg.read)
                         Container(
@@ -1503,6 +1608,9 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
     final contactCtrl = TextEditingController();
     String channel = 'satellite-voice';
     int dur = 15;
+    // Join window opens 10 minutes before the slot, so "start now" is what a
+    // crew member uses on shift. Later slots are genuinely not joinable yet.
+    int startOffsetMinutes = 0;
     final user = auth.currentUser;
 
     showDialog(
@@ -1559,6 +1667,28 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                     }).toList(),
                     onChanged: (v) => setDlgState(() => dur = v ?? 15),
                   ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    initialValue: startOffsetMinutes,
+                    dropdownColor: context.appColors.surfaceHigh,
+                    decoration: const InputDecoration(
+                      labelText: 'Slot Start',
+                      helperText:
+                          'Join unlocks 10 minutes before the start time',
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 0,
+                        child: Text('Start Now (On Shift)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 480,
+                        child: Text('In 8 Hours (Next Allotment)'),
+                      ),
+                    ],
+                    onChanged: (v) =>
+                        setDlgState(() => startOffsetMinutes = v ?? 0),
+                  ),
                 ],
               ),
               actions: [
@@ -1588,7 +1718,7 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                       personName: user?.name ?? 'Station Crew Member',
                       familyContactName: contactCtrl.text.trim(),
                       scheduledSlot: DateTime.now().add(
-                        const Duration(hours: 8),
+                        Duration(minutes: startOffsetMinutes),
                       ),
                       durationMinutes: dur,
                       status: 'booked',

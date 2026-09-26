@@ -249,13 +249,21 @@ class _PersonnelScreenState extends State<PersonnelScreen> {
                                       mainAxisAlignment:
                                           MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Text(
-                                          person.name,
-                                          style: AppTypography.titleMd.copyWith(
-                                            color: context.appColors.onSurface,
-                                            fontWeight: FontWeight.w700,
+                                        Flexible(
+                                          child: Text(
+                                            person.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: AppTypography.titleMd
+                                                .copyWith(
+                                                  color: context
+                                                      .appColors
+                                                      .onSurface,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
                                           ),
                                         ),
+                                        const SizedBox(width: 8),
                                         StatusBadge(
                                           status: person.status,
                                           isPill: true,

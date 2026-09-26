@@ -122,25 +122,32 @@ class ResupplyScreen extends StatelessWidget {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    cycle.expeditionCode.toUpperCase(),
-                                    style: AppTypography.telemetryXs.copyWith(
-                                      color: context.appColors.primary,
+                              Flexible(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      cycle.expeditionCode.toUpperCase(),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTypography.telemetryXs.copyWith(
+                                        color: context.appColors.primary,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    cycle.vesselName,
-                                    style: AppTypography.titleSm.copyWith(
-                                      color: context.appColors.onSurface,
-                                      fontWeight: FontWeight.w700,
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      cycle.vesselName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTypography.titleSm.copyWith(
+                                        color: context.appColors.onSurface,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
+                              const SizedBox(width: 8),
                               StatusBadge(status: cycle.status),
                             ],
                           ),
@@ -222,12 +229,17 @@ class ResupplyScreen extends StatelessWidget {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                'CARGO MANIFEST ITEMS (${cycle.cargoItems.length})',
-                                style: AppTypography.labelSm.copyWith(
-                                  color: context.appColors.onSurfaceVariant,
+                              Flexible(
+                                child: Text(
+                                  'CARGO MANIFEST ITEMS (${cycle.cargoItems.length})',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTypography.labelSm.copyWith(
+                                    color: context.appColors.onSurfaceVariant,
+                                  ),
                                 ),
                               ),
+                              const SizedBox(width: 8),
                               Text(
                                 '${cycle.packedItemsCount}/${cycle.cargoItems.length} PACKED / SHIPPED',
                                 style: AppTypography.telemetryXs.copyWith(

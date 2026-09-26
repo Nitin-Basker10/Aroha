@@ -69,7 +69,8 @@ Future<void> main(List<String> args) async {
       continue;
     }
 
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
     try {
       final upstreamRequest = await client.getUrl(uri);
       upstreamRequest.followRedirects = true;

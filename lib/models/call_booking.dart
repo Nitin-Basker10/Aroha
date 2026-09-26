@@ -13,7 +13,10 @@ class CallBooking {
   /// Compliance (confidential research — DPDP Act 2023 / IT Act)
   final bool familyConsentGiven;
   final bool briefingAcked;
-  final String? recordingRef; // external recorder reference, never raw audio
+
+  /// Optional pointer to a recording held by an external, access-controlled
+  /// recorder. This build deploys no recorder, so it stays null; schema-only.
+  final String? recordingRef;
   final String? inviteCode; // family portal invite linked to this booking
 
   /// Crew undertaking — signed by station-side signatory before joining.

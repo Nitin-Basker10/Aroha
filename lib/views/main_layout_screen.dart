@@ -258,7 +258,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
       if (data.selectedStationId != linkedStation) {
         // Use addPostFrameCallback to avoid calling setState during build
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          data.selectStation(linkedStation);
+          data.selectStation(linkedStation, user: auth.currentUser);
         });
       }
     }

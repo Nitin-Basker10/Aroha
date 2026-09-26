@@ -146,7 +146,7 @@ class TacticalHeader extends StatelessWidget implements PreferredSizeWidget {
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      'SAT-LINK 99.4%',
+                      'MVP LINK // DEMO',
                       style: AppTypography.telemetryXs.copyWith(
                         color: colors.onSurface,
                         fontWeight: FontWeight.w600,
