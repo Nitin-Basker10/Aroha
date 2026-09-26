@@ -140,7 +140,7 @@ ErrorWidget.builder = (details) => MaterialApp(home: Scaffold(
 - Extend `test/watney_calculator_test.dart`: cross-station routing, empty-station fallback, duplicate cargo rejection.
 - Manual: §1 routing test, inventory negative/over-stock blocked, offline images no-crash, station staff local resolve.
 
-## 7. NPDC Live Telemetry (DONE — one deployment item open)
+## 7. NPDC Live Telemetry (DONE — production CORS path closed)
 
 Added `lib/models/ncpor_reading.dart` + `lib/services/ncpor_data_source.dart`.
 Reads `d1` JSON out of data.ncpor.res.in metric pages for maitri / bharati /
@@ -150,18 +150,25 @@ Polling starts in `main.dart` via `startNporPolling()`, **not** the
 constructor, so tests stay offline. Attribution line added for the NPDC data
 policy (Antarctic Treaty §III.1.c / IPY).
 
-Dev run (web needs the CORS proxy — the portal sends no `Access-Control-*`):
+**Production CORS path — shipped.** `supabase/functions/npdc-proxy` is a
+Deno Edge Function that fetches the portal server-side and returns it with
+permissive CORS headers, because the portal answers OPTIONS with 200 but
+sends no `Access-Control-*` at all. It is public and unauthenticated by
+necessity (the browser has no Supabase session), so it allowlists exactly
+one host — `data.ncpor.res.in` over https — and refuses everything else
+with 403. It is not an open proxy.
+
+The Flutter build bakes the function URL in at compile time:
 ```powershell
-& 'C:\Users\user\flutter\bin\dart.bat' run tool\ncpor_proxy.dart   # 127.0.0.1:8100
-& 'C:\Users\user\flutter\bin\flutter.bat' run -d web-server --web-port 8099 --web-hostname 127.0.0.1 `
-  --dart-define=NCPOR_PROXY=http://127.0.0.1:8100/?url=
-& 'C:\Users\user\flutter\bin\dart.bat' run tool\ncpor_smoke.dart    # connectivity check
+flutter build web --release --base-href /Aroha/ `
+  --dart-define=NCPOR_PROXY=https://qznvgjsenqtdxoidnuht.supabase.co/functions/v1/npdc-proxy?url=
 ```
 
-- [ ] **Production CORS path** — `tool/ncpor_proxy.dart` is loopback-only dev
-      scaffolding. For a deployed build, move the fetch server-side into a
-      Supabase Edge Function (project already uses Supabase) and point
-      `NCPOR_PROXY` at it. Never ship the loopback proxy.
+- [x] **Production CORS path** — Supabase Edge Function, replacing the
+      loopback-only dev proxy.
+
+`tool/ncpor_proxy.dart` remains useful for local work and is still
+loopback-bound. **Never ship it.**
 
 ## 8. Light/Dark Theme (DONE — HARDENED)
 
@@ -191,4 +198,31 @@ Dev run (web needs the CORS proxy — the portal sends no `Access-Control-*`):
 - [x] 4. Cargo duplicate + permission guards
 - [x] 5. Keep-alive Listener + ErrorWidget
 - [x] 6. analyze + test + manual checks
-- [ ] 7. NPDC telemetry: production CORS proxy (Supabase Edge Function)
+- [x] 7. NPDC telemetry: production CORS proxy (Supabase Edge Function)
+
+## 10. Data Access — RLS lockdown APPLIED
+
+All 11 tables shipped with one permissive `demo open access` policy
+(`roles {anon,authenticated}`, `cmd ALL`, `qual true`, `with_check true`).
+On web the publishable key is inside the JS bundle, so that granted full
+read **and write** to anyone. The client-side guards in `lib/` are advisory
+only — a caller can skip the UI and hit PostgREST directly.
+
+`20260926000000_lock_down_demo_rls.sql` drops those policies and forces RLS
+on every table. RLS with no permissive policy denies everything, so dropping
+them *is* the lockdown.
+
+Verified against the live project using the publishable key as `anon`:
+`SELECT` returns `[]` on all 11 tables, `INSERT` returns `42501 new row
+violates row-level security policy`, and `UPDATE`/`DELETE` affect 0 rows.
+Forging a personnel medical clearance, or self-granting `consent_given` on a
+family invite to walk into a call, is no longer possible over the network.
+
+Consequence: cloud sync no longer works, by design. `PolarDataService` is
+offline-first and falls back to local seed data, and the whole demo path
+(family code `MTR-2026` -> `call_01`) is seeded locally, so the walkthrough
+is unaffected.
+
+Re-opening controlled access requires Supabase Auth plus a `profiles` table
+first — see the tail of the migration file for the intended shape. Until
+then, deny-all is the correct posture.

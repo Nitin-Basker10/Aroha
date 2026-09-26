@@ -1,0 +1,73 @@
+name: Deploy to GitHub Pages
+
+# Publishes the Flutter web build to GitHub Pages on every push to main, so the
+# judge link always reflects the latest commit with no manual rebuild step.
+#
+# One-time setup (in the repo, not here):
+#   Settings -> Pages -> Build and deployment -> Source -> "GitHub Actions"
+# Without that toggle this workflow builds fine but has nowhere to publish.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Allow the workflow to publish to Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two deploys at once — a half-finished publish would be worse than a
+# skipped one. Queued runs cancel the older in-progress run.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.7'
+          channel: stable
+          cache: true
+
+      - name: Build web release
+        run: |
+          flutter pub get
+          # --base-href must match the Pages path exactly: this repo serves at
+          # /Aroha/, not /. A mismatch yields a blank page, because the app
+          # requests main.dart.js relative to the wrong root.
+          #
+          # NCPOR_PROXY points at the Supabase Edge Function that proxies the
+          # NCPOR portal. data.ncpor.res.in sends no CORS headers, so a browser
+          # cannot read it directly; the function fetches server-side. The
+          # trailing "?url=" is required — the app appends the percent-encoded
+          # target to this prefix.
+          #
+          # Stored as a repository variable rather than hardcoded so the key and
+          # project can change without editing this file. Define it under
+          # Settings -> Secrets and variables -> Actions -> Variables as
+          # NCPOR_PROXY.
+          flutter build web --release \
+            --base-href /Aroha/ \
+            --dart-define=NCPOR_PROXY="${{ vars.NCPOR_PROXY }}"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

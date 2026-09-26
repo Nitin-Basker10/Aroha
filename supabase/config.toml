@@ -1,0 +1,8 @@
+project_id = "qznvgjsenqtdxoidnuht"
+
+[functions.npdc-proxy]
+# Public, unauthenticated by design: the Flutter web build calls this from the
+# browser with no Supabase session, and the upstream NPDC portal needs no
+# credentials. Safety comes from the host allowlist inside the function, which
+# refuses anything except https://data.ncpor.res.in.
+verify_jwt = false

@@ -231,8 +231,16 @@ folder is added.
 ## 12. Backend — Supabase (live, offline-first)
 
 Project `qznvgjsenqtdxoidnuht`, wired via MCP. 11 tables mirroring
-`lib/models/*` (migration `aroha_initial_schema`), RLS on with
-demo-open anon policies until Supabase Auth replaces mock logins.
+`lib/models/*` (migration `aroha_initial_schema`). RLS is enabled **and
+forced** on all 11 with no permissive policies, so `anon` and
+`authenticated` both read and write nothing. The tables previously carried
+a permissive `demo open access` policy, which on web meant anyone with the
+publishable key in the JS bundle could read and write invite codes, consent
+flags and personnel medical data; that is closed. Lockdown verified by
+issuing real `anon` requests: `SELECT` yields `[]`, `INSERT` yields
+`42501`, `UPDATE`/`DELETE` affect 0 rows. The app is offline-first and
+falls back to local seed data, so the demo path is unaffected. Controlled
+access returns when Supabase Auth and a `profiles` table exist.
 
 **Client layers:**
 - `supabase_service.dart` — URL + publishable key only (`--dart-define`

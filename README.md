@@ -24,3 +24,27 @@ From `C:\Users\user\sih_polar`:
 ```
 
 For the optional web NPDC telemetry proxy, see `IMPLEMENTATION_REMAINING.md` and `tool/ncpor_proxy.dart`.
+
+## Deploy
+
+Pushed to GitHub Pages by `.github/workflows/pages.yml` on every push to
+`main`. The public site is:
+
+```
+https://nitin-basker10.github.io/Aroha/
+```
+
+One-time repo setting: **Settings → Pages → Source → GitHub Actions**, and
+define the `NCPOR_PROXY` repository variable (Settings → Secrets and
+variables → Actions → Variables) as:
+
+```
+https://qznvgjsenqtdxoidnuht.supabase.co/functions/v1/npdc-proxy?url=
+```
+
+`--base-href /Aroha/` must track the repo name; a mismatch renders a blank
+page because the app resolves `main.dart.js` against the wrong root.
+
+Live telemetry in the deployed build goes through the
+`supabase/functions/npdc-proxy` Edge Function. `tool/ncpor_proxy.dart` is
+loopback-only dev scaffolding and must never be deployed.
