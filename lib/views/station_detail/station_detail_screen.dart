@@ -240,7 +240,7 @@ class StationDetailScreen extends StatelessWidget {
                       _buildSubsystemRow(
                         context: context,
                         title: 'Primary Inmarsat / VSAT Radome Feed',
-                        statusText: 'SIGNAL STATUS // DEMO TELEMETRY',
+                        statusText: 'SIGNAL STATUS // NPDC PORTAL FEED',
                         status: 'nominal',
                         icon: Icons.satellite_alt,
                       ),

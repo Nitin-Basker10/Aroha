@@ -78,8 +78,8 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
               Expanded(
                 child: TelemetryCard(
                   label: 'Call Link',
-                  value: 'MVP',
-                  unit: 'DEMO',
+                  value: 'LOCAL',
+                  unit: 'PREVIEW',
                   subtext: 'Remote relay not configured',
                   icon: Icons.satellite_alt,
                   accentColor: context.appColors.nominal,
@@ -1456,13 +1456,6 @@ class _CommsHubScreenState extends State<CommsHubScreen> {
                   letterSpacing: 1.2,
                   color: context.appColors.onSurfaceVariant,
                 ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'LOCAL DEMO SESSION',
-              style: AppTypography.telemetryXs.copyWith(
-                color: context.appColors.nominal,
               ),
             ),
           ],

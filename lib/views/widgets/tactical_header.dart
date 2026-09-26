@@ -117,46 +117,10 @@ class TacticalHeader extends StatelessWidget implements PreferredSizeWidget {
 
             // Family sessions are invite-scoped: keep station telemetry and
             // operational alert controls out of their header entirely.
-            if (!isFamilySession) ...[
-              // SAT-LINK Status Indicator
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: chipBg,
-                  borderRadius: BorderRadius.circular(3),
-                  border: Border.all(color: borderColor),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: context.appColors.nominal,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: context.appColors.nominal,
-                            blurRadius: 4,
-                            spreadRadius: 1,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'MVP LINK // DEMO',
-                      style: AppTypography.telemetryXs.copyWith(
-                        color: colors.onSurface,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-            ],
+            //
+            // The former "MVP LINK // DEMO" sat-link chip was removed here.
+            // It paired a pulsing green dot with a demo caveat, and the dot
+            // alone reads as a live operational link that does not exist.
 
             // Active Role Indicator (read-only, no switcher)
             Container(

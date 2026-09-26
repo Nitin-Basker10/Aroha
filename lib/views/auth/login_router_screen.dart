@@ -215,54 +215,10 @@ class _LoginRouterScreenState extends State<LoginRouterScreen>
         const SizedBox(height: 10),
         _buildFamilyCard(),
 
-        const SizedBox(height: 20),
-
-        // System Status Footer
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: context.appColors.surfaceLow,
-            borderRadius: BorderRadius.circular(3),
-            border: Border.all(color: context.appColors.border),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Flexible(
-                child: Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: context.appColors.nominal,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        'MVP LINK: LOCAL DEMO SESSION',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.telemetryXs.copyWith(
-                          color: context.appColors.nominal,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'DEMO SESSION',
-                style: AppTypography.telemetryXs.copyWith(
-                  color: context.appColors.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
+        // The former "System Status Footer" (green dot + "MVP LINK: LOCAL
+        // DEMO SESSION" / "DEMO SESSION") was removed here. It carried no
+        // information beyond the demo caveat, and the green dot implied a
+        // live link that this build does not have.
       ],
     );
   }
@@ -872,12 +828,6 @@ class _PortalLoginFormState extends State<_PortalLoginForm> {
                     ),
                   ),
                 ],
-              ),
-              Text(
-                'DEMO SESSION',
-                style: AppTypography.telemetryXs.copyWith(
-                  color: context.appColors.onSurfaceVariant,
-                ),
               ),
             ],
           ),
