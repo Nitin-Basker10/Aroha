@@ -226,3 +226,59 @@ is unaffected.
 Re-opening controlled access requires Supabase Auth plus a `profiles` table
 first — see the tail of the migration file for the intended shape. Until
 then, deny-all is the correct posture.
+
+## 11. Two-party video media — NOT BUILT, and why
+
+The call room is **local preview only**. There is no `RTCPeerConnection`, no
+ICE exchange and no signaling anywhere in `lib/`. The room shows the user's
+own camera via `getUserMedia` and says `REMOTE RELAY NOT CONFIGURED`. No
+peer connection, recording or encryption is claimed.
+
+A signaling relay was built and then removed. It is recorded here so the
+same ground is not covered twice.
+
+**Supabase Realtime is unavailable on this project.** The `realtime`
+extension is not installed and there is no `realtime.messages` table, so
+broadcast cannot be used for SDP/ICE exchange. This is a project-level
+setting, not something SQL can change.
+
+**Supabase Edge Functions cannot hold a WebSocket.** A `call-signal` Edge
+Function was written, deployed and probed. The relay logic was correct —
+authorisation resolved `AUTHORISED` for `MTR-2026` and `denied` for a wrong
+code, and the upgrade handshake returned 101 with `readyState=OPEN`. But the
+socket was then torn down immediately: a single-peer liveness probe
+consistently showed `readyState=1`, then `readyState=3` with close code
+**1006** (abnormal closure, no close frame) and zero messages received. The
+connection does not survive long enough to relay anything. This is a
+platform limitation, not a coding bug.
+
+Three Deno-specific traps were hit and fixed along the way, worth knowing
+if this is ever retried on a host that does support WebSockets:
+
+1. `Deno.upgradeWebSocket()` must be reached **synchronously**. Awaiting the
+   authorisation check first makes the gateway return **502** and the client
+   reports "not upgraded to websocket". Fix: upgrade immediately, authorise
+   afterwards, and gate *registration* rather than the upgrade.
+2. A server-side `onopen` **never fires** — Deno returns the socket already
+   open. Peers must register themselves directly after the upgrade.
+3. A freshly upgraded socket can still report `readyState == CONNECTING`, so
+   a `send()` that insists on `OPEN` silently drops the first message, which
+   is the `hello` telling a peer who is already in the room.
+
+**Viable hosts, if the media leg is ever wanted:** a Cloudflare Worker with
+a Durable Object (free tier, native WebSocket support), a LiveKit Cloud free
+tier (a complete WebRTC SFU, supplying signaling *and* TURN *and* media
+routing, so the least code), or a small Node server on a cheap host. All
+three need a new account.
+
+**Framing constraint.** A browser-to-browser WebRTC session is *not* a
+satellite link. Real polar crew reach family through a satellite operator's
+media gateway; peer-to-peer media over the general Internet is a
+ground-network simulation of that path. If this is ever built it must be
+labelled as a simulation in the UI, because the current honest labels
+(`REMOTE RELAY NOT DEPLOYED`, `DEMO CHANNEL — NO E2E SIGNALING`) are the
+thing keeping the project's claims defensible.
+
+The authorisation and consent gate around the call — two-party clearance,
+invite binding, non-overwritable signatures, station scoping, fail-closed
+service guards — is complete and is the part worth demonstrating.
