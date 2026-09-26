@@ -18,7 +18,13 @@ Command app for India's polar program (NCPOR Goa HQ + 3 field outposts). Replace
 | Bharati Station | BHR-02 | Larsemann Hills, Antarctica | ~82d | active |
 | Himadri Arctic Station | HMD-03 | Ny-Ålesund, Svalbard | ~45d | low-connectivity |
 
-**Tech:** Flutter Material3, `provider` (`PolarDataService` + `AuthService`), `google_fonts` (IBM Plex Sans + JetBrains Mono), `uuid`, `intl`. No backend — all state is in-memory mock in `lib/services/polar_data_service.dart`. Firestore helpers (`toFirestore/fromMap`) exist on every model for future backend swap.
+**Tech:** Flutter Material3, `provider` (`PolarDataService` + `AuthService`), `google_fonts` (IBM Plex Sans + JetBrains Mono), `uuid`, `intl`, `supabase_flutter`, `flutter_webrtc`.
+
+**Backend:** Supabase project `qznvgjsenqtdxoidnuht`, offline-first — the app
+seeds local data and treats Supabase as an additive sync layer, so it boots
+and runs with the backend unreachable. Cloud sync is currently **off by
+design** (see the RLS lockdown in §Backend): the tables are locked down, so
+reads return nothing and the app stays on local seed data.
 
 ---
 
@@ -35,7 +41,10 @@ Command app for India's polar program (NCPOR Goa HQ + 3 field outposts). Replace
 | Message HQ / other stations | Yes | Yes |
 | Cross-station resource requests | View all | Send + approve/deny incoming |
 
-Family portal was **removed** — HQ contacts families outside the app.
+Family portal is **invite-only and family-only** — reached with a per-booking
+code, not an account. A family session sees exactly one thing (their
+relative's call slot) and no station data whatsoever; `accessFamilyPortal` is
+granted to no other role, so HQ and crew have no Family tab at all.
 
 **Demo logins (mock only):**
 
