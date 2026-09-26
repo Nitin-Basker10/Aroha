@@ -53,3 +53,14 @@ app.*.map.json
 .env.*
 !.env.example
 
+# Netlify CLI local link state. siteId in .netlify/state.json is per-machine and
+# per-site; committing it makes a fresh clone deploy to the wrong site, which is
+# exactly the failure that sent the first publish to a stale site.
+.netlify/
+
+# Never commit Netlify or Supabase deploy credentials. NETLIFY_AUTH_TOKEN is
+# account-wide, not site-scoped, so a leaked one is a full account compromise.
+# Store it as a CI secret, not a file.
+.netlify.toml.local
+*.netlify-token
+
