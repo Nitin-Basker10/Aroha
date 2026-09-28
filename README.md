@@ -23,7 +23,24 @@ From `C:\Users\user\sih_polar`:
 & 'C:\Users\user\flutter\bin\flutter.bat' run -d chrome
 ```
 
-For the optional web NPDC telemetry proxy, see `IMPLEMENTATION_REMAINING.md` and `tool/ncpor_proxy.dart`.
+Verify the build before pushing:
+
+```powershell
+& 'C:\Users\user\flutter\bin\flutter.bat' analyze   # expect: No issues found
+& 'C:\Users\user\flutter\bin\flutter.bat' test      # expect: 92 tests passing
+```
+
+### Live NPDC telemetry on web
+
+`data.ncpor.res.in` sends no `Access-Control-*` headers, so a browser cannot
+read it. The deployed build therefore fetches through the
+`supabase/functions/npdc-proxy` Edge Function.
+
+- Connectivity check: `dart run tool/ncpor_smoke.dart`
+- Loopback proxy for local work: `dart run tool/ncpor_proxy.dart` (127.0.0.1:8100).
+  This is development scaffolding only — never deploy it. The Edge Function
+  is the production path.
+
 
 ## Deploy
 

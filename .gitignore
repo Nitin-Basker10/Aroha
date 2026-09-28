@@ -69,3 +69,11 @@ app.*.map.json
 # Remove this line if you ever want the PRD published.
 prd/
 
+# Internal working notes: the implementation plan / TODO audit. Useful locally,
+# not part of the product.
+IMPLEMENTATION_REMAINING.md
+
+# Netlify config. Deployment is on GitHub Pages (see .github/workflows/pages.yml);
+# this only exists for an alternative host that is not in use.
+netlify.toml
+
