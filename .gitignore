@@ -64,3 +64,8 @@ app.*.map.json
 .netlify.toml.local
 *.netlify-token
 
+# Competition submission material — deliberately kept out of the public repo.
+# Holds the PRD, evaluation notes and generated SIH decks. Tracked locally only.
+# Remove this line if you ever want the PRD published.
+prd/
+
